@@ -1,0 +1,6 @@
+livekit-agents[silero,openai,cartesia]
+python-dotenv
+faster-whisper
+google-cloud-aiplatform
+livekit-plugins-google
+aiohttp

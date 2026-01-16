@@ -1,0 +1,910 @@
+'use client';
+
+import React from 'react';
+import { decodePassphrase } from '@/lib/client-utils';
+
+import toast from 'react-hot-toast';
+import { dbClient as supabase } from '@/lib/orbit/services/dbClient';
+import { useAuth } from '@/components/AuthProvider';
+import { RecordingIndicator } from '@/lib/RecordingIndicator';
+import { OrbitIcon } from '@/lib/orbit/components/OrbitTranslatorVertical';
+
+import { ChatPanel } from '@/lib/ChatPanel';
+import { ParticipantsPanel } from '@/lib/ParticipantsPanel';
+import { OrbitTranslatorPanel } from '@/lib/orbit/components/OrbitTranslatorPanel';
+import { LiveCaptions } from '@/lib/LiveCaptions';
+import { CustomPreJoin } from '@/lib/CustomPreJoin';
+import { LoginOverlay } from '@/components/LoginOverlay';
+import { useSpeechStream } from '@/lib/orbit/hooks/useSpeechStream';
+import { useVoiceSocket } from '@/lib/orbit/hooks/useVoiceSocket';
+import { useWebSpeech } from '@/lib/orbit/hooks/useWebSpeech';
+import { ensureRoomState } from '@/lib/orbit/services/orbitService';
+import { LANGUAGES, RoomState, STTEngine, TranslationEngine } from '@/lib/orbit/types';
+import { useOrbitTranslator } from '@/lib/orbit/hooks/useOrbitTranslator';
+
+
+import { HostCaptionOverlay } from '@/lib/orbit/components/HostCaptionOverlay';
+import { CinemaCaptionOverlay } from '@/lib/CinemaCaptionOverlay';
+
+import roomStyles from '@/styles/Eburon.module.css';
+
+import {
+  LocalUserChoices,
+  RoomContext,
+  LayoutContextProvider,
+  GridLayout,
+  FocusLayout,
+  FocusLayoutContainer,
+  ParticipantTile,
+  useTracks,
+  useCreateLayoutContext,
+  useLayoutContext,
+  usePinnedTracks,
+  usePersistentUserChoices,
+  isTrackReference,
+  RoomAudioRenderer,
+  ConnectionStateToast,
+  useLocalParticipant,
+  useRemoteParticipants,
+} from '@livekit/components-react';
+
+type ExtendedUserChoices = LocalUserChoices & {
+  targetLanguage?: string;
+};
+
+import { useMeetingFloor } from '@/lib/useMeetingFloor';
+import { useParams } from 'next/navigation';
+import {
+  ExternalE2EEKeyProvider,
+  RoomOptions,
+  VideoCodec,
+  VideoPresets,
+  Room,
+  DeviceUnsupportedError,
+  RoomConnectOptions,
+  RoomEvent,
+  TrackPublishDefaults,
+  VideoCaptureOptions,
+  AudioCaptureOptions,
+  ConnectionState,
+  Track,
+} from 'livekit-client';
+import { useRouter } from 'next/navigation';
+import { useSetupE2EE } from '@/lib/useSetupE2EE';
+import { useLowCPUOptimizer } from '@/lib/usePerfomanceOptimiser';
+
+const CONN_DETAILS_ENDPOINT =
+  process.env.NEXT_PUBLIC_CONN_DETAILS_ENDPOINT ?? '/api/connection-details';
+
+// Icons
+import { useOrbitMic } from '@/lib/orbit/hooks/useOrbitMic';
+import { useSound } from '@/lib/hooks/useSound';
+
+const ChevronRightIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="20" height="20">
+    <polyline points="9 18 15 12 9 6" />
+  </svg>
+);
+
+const ChevronLeftIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="20" height="20">
+    <polyline points="15 18 9 12 15 6" />
+  </svg>
+);
+
+
+
+type SidebarPanel = 'participants' | 'chat' | 'settings' | 'orbit';
+
+function VideoGrid({ allowedParticipantIds, isGridView }: { allowedParticipantIds: Set<string>, isGridView: boolean }) {
+  const layoutContext = useLayoutContext();
+  const tracks = useTracks(
+    [
+      { source: Track.Source.Camera, withPlaceholder: false },
+      { source: Track.Source.ScreenShare, withPlaceholder: false },
+    ],
+    { onlySubscribed: false },
+  );
+  const focusTrack = usePinnedTracks(layoutContext)?.[0];
+  const focusTrackRef = focusTrack && isTrackReference(focusTrack) ? focusTrack : undefined;
+  const focusTrackSid = focusTrackRef?.publication?.trackSid;
+  const autoPinnedSidRef = React.useRef<string | null>(null);
+
+  React.useEffect(() => {
+    const dispatch = layoutContext?.pin?.dispatch;
+    if (!dispatch) {
+      return;
+    }
+
+    const screenShareTracks = tracks
+      .filter(isTrackReference)
+      .filter((track) => track.source === Track.Source.ScreenShare && track.publication?.isSubscribed);
+    const currentPinnedSid = focusTrackRef?.publication?.trackSid ?? null;
+    const hasManualPin = currentPinnedSid && currentPinnedSid !== autoPinnedSidRef.current;
+
+    if (hasManualPin) {
+      autoPinnedSidRef.current = null;
+      return;
+    }
+
+    if (!currentPinnedSid && screenShareTracks.length > 0) {
+      const target = screenShareTracks[0];
+      autoPinnedSidRef.current = target.publication.trackSid ?? null;
+      dispatch({ msg: 'set_pin', trackReference: target });
+      return;
+    }
+
+    if (autoPinnedSidRef.current) {
+      const stillExists = screenShareTracks.some(
+        (track) => track.publication.trackSid === autoPinnedSidRef.current,
+      );
+      if (!stillExists) {
+        dispatch({ msg: 'clear_pin' });
+        autoPinnedSidRef.current = null;
+      }
+    }
+  }, [layoutContext, tracks, focusTrackRef]);
+
+  const filteredTracks = tracks.filter((track) => {
+    if (track.source === Track.Source.ScreenShare) return true;
+    if (track.participant?.isLocal) return true;
+    if (track.participant && allowedParticipantIds.has(track.participant.identity)) return true;
+    if (isGridView && track.participant) return true;
+    if (focusTrackSid && isTrackReference(track) && track.publication.trackSid === focusTrackSid) return true;
+    return false;
+  });
+
+  const focusIsInGrid =
+    !!focusTrackRef &&
+    filteredTracks.some(
+      (track) => isTrackReference(track) && track.publication.trackSid === focusTrackRef.publication?.trackSid,
+    );
+  const activeFocusTrack = focusIsInGrid ? focusTrackRef : undefined;
+
+  if (filteredTracks.length === 0) {
+    return (
+      <div className={roomStyles.videoPlaceholder}>
+        Your camera will appear here
+      </div>
+    );
+  }
+
+  return (!activeFocusTrack || isGridView) ? (
+    <GridLayout tracks={filteredTracks} style={{ height: '100%' }}>
+      <ParticipantTile />
+    </GridLayout>
+  ) : (
+    <FocusLayoutContainer className={roomStyles.focusLayoutContainer}>
+      <FocusLayout trackRef={activeFocusTrack} />
+    </FocusLayoutContainer>
+  );
+}
+
+function SettingsPanel({
+  voiceFocusEnabled,
+  onVoiceFocusChange,
+  vadEnabled,
+  onVadChange,
+  noiseSuppressionEnabled,
+  onNoiseSuppressionChange,
+  echoCancellationEnabled,
+  onEchoCancellationChange,
+  autoGainEnabled,
+  onAutoGainChange,
+}: {
+  voiceFocusEnabled: boolean;
+  onVoiceFocusChange: (enabled: boolean) => void;
+  vadEnabled: boolean;
+  onVadChange: (enabled: boolean) => void;
+  noiseSuppressionEnabled: boolean;
+  onNoiseSuppressionChange: (enabled: boolean) => void;
+  echoCancellationEnabled: boolean;
+  onEchoCancellationChange: (enabled: boolean) => void;
+  autoGainEnabled: boolean;
+  onAutoGainChange: (enabled: boolean) => void;
+}) {
+  return (
+    <div className={roomStyles.sidebarPanel}>
+      <div className={roomStyles.sidebarHeader}>
+        <div className={roomStyles.sidebarHeaderText}>
+          <h3>Audio Settings</h3>
+          <span className={roomStyles.sidebarHeaderMeta}>Configure audio processing</span>
+        </div>
+      </div>
+      <div className={roomStyles.sidebarBody}>
+        <div className={roomStyles.sidebarCard}>
+          <div className={roomStyles.sidebarCardText}>
+            <span className={roomStyles.sidebarCardLabel}>Voice Focus</span>
+            <span className={roomStyles.sidebarCardHint}>Isolate your voice from background noise.</span>
+          </div>
+          <label className={roomStyles.sidebarSwitch}>
+            <input
+              type="checkbox"
+              checked={voiceFocusEnabled}
+              onChange={(e) => onVoiceFocusChange(e.target.checked)}
+              aria-label="Voice Focus"
+            />
+            <span className={roomStyles.sidebarSwitchTrack}>
+              <span className={roomStyles.sidebarSwitchThumb} />
+            </span>
+          </label>
+        </div>
+
+        <div className={roomStyles.sidebarCard}>
+          <div className={roomStyles.sidebarCardText}>
+            <span className={roomStyles.sidebarCardLabel}>Voice Detection</span>
+            <span className={roomStyles.sidebarCardHint}>Auto-mute when not speaking.</span>
+          </div>
+          <label className={roomStyles.sidebarSwitch}>
+            <input
+              type="checkbox"
+              checked={vadEnabled}
+              onChange={(e) => onVadChange(e.target.checked)}
+              aria-label="Voice Activity Detection"
+            />
+            <span className={roomStyles.sidebarSwitchTrack}>
+              <span className={roomStyles.sidebarSwitchThumb} />
+            </span>
+          </label>
+        </div>
+
+        <div className={roomStyles.sidebarCard}>
+          <div className={roomStyles.sidebarCardText}>
+            <span className={roomStyles.sidebarCardLabel}>Noise Suppression</span>
+            <span className={roomStyles.sidebarCardHint}>Reduce background noise.</span>
+          </div>
+          <label className={roomStyles.sidebarSwitch}>
+            <input
+              type="checkbox"
+              checked={noiseSuppressionEnabled}
+              onChange={(e) => onNoiseSuppressionChange(e.target.checked)}
+              aria-label="Noise Suppression"
+            />
+            <span className={roomStyles.sidebarSwitchTrack}>
+              <span className={roomStyles.sidebarSwitchThumb} />
+            </span>
+          </label>
+        </div>
+
+        <div className={roomStyles.sidebarCard}>
+          <div className={roomStyles.sidebarCardText}>
+            <span className={roomStyles.sidebarCardLabel}>Echo Cancellation</span>
+            <span className={roomStyles.sidebarCardHint}>Prevent audio feedback.</span>
+          </div>
+          <label className={roomStyles.sidebarSwitch}>
+            <input
+              type="checkbox"
+              checked={echoCancellationEnabled}
+              onChange={(e) => onEchoCancellationChange(e.target.checked)}
+              aria-label="Echo Cancellation"
+            />
+            <span className={roomStyles.sidebarSwitchTrack}>
+              <span className={roomStyles.sidebarSwitchThumb} />
+            </span>
+          </label>
+        </div>
+
+        <div className={roomStyles.sidebarCard}>
+          <div className={roomStyles.sidebarCardText}>
+            <span className={roomStyles.sidebarCardLabel}>Auto Gain Control</span>
+            <span className={roomStyles.sidebarCardHint}>Auto-adjust microphone volume.</span>
+          </div>
+          <label className={roomStyles.sidebarSwitch}>
+            <input
+              type="checkbox"
+              checked={autoGainEnabled}
+              onChange={(e) => onAutoGainChange(e.target.checked)}
+              aria-label="Auto Gain Control"
+            />
+            <span className={roomStyles.sidebarSwitchTrack}>
+              <span className={roomStyles.sidebarSwitchThumb} />
+            </span>
+          </label>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function PageClientImpl(props: {
+  roomName: string;
+  region?: string;
+  hq: boolean;
+  codec: VideoCodec;
+}) {
+  const [connectionDetails, setConnectionDetails] = React.useState<ConnectionDetails>();
+  const [preJoinChoices, setPreJoinChoices] = React.useState<ExtendedUserChoices>();
+  const [isLoading, setIsLoading] = React.useState(false);
+  const [connectionError, setConnectionError] = React.useState<string | null>(null);
+
+  const {
+    userChoices,
+    saveAudioInputEnabled,
+    saveVideoInputEnabled,
+    saveAudioInputDeviceId,
+    saveVideoInputDeviceId,
+    saveUsername,
+  } = usePersistentUserChoices();
+
+  const preJoinDefaults = React.useMemo(
+    () => ({
+      audioEnabled: userChoices.audioEnabled,
+      videoEnabled: userChoices.videoEnabled,
+      audioDeviceId: userChoices.audioDeviceId,
+      videoDeviceId: userChoices.videoDeviceId,
+      username: userChoices.username,
+    }),
+    [userChoices],
+  );
+
+  const handlePreJoinSubmit = React.useCallback(
+    (values: ExtendedUserChoices) => {
+      saveAudioInputEnabled(values.audioEnabled);
+      saveVideoInputEnabled(values.videoEnabled);
+      saveAudioInputDeviceId(values.audioDeviceId);
+      saveVideoInputDeviceId(values.videoDeviceId);
+      saveUsername(values.username);
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem(`lk_autojoin_${props.roomName}`, 'true');
+      }
+      setPreJoinChoices(values);
+    },
+    [
+      props.roomName,
+      saveAudioInputEnabled,
+      saveAudioInputDeviceId,
+      saveVideoInputEnabled,
+      saveVideoInputDeviceId,
+      saveUsername,
+    ],
+  );
+
+  const handlePreJoinError = React.useCallback((error: unknown) => {
+    console.error('Pre-join error', error);
+  }, []);
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const shouldAutoJoin = sessionStorage.getItem(`lk_autojoin_${props.roomName}`);
+    if (shouldAutoJoin === 'true' && userChoices.username) {
+      setPreJoinChoices({
+        username: userChoices.username,
+        videoEnabled: userChoices.videoEnabled ?? true,
+        audioEnabled: userChoices.audioEnabled ?? true,
+        videoDeviceId: userChoices.videoDeviceId ?? 'default',
+        audioDeviceId: userChoices.audioDeviceId ?? 'default',
+        targetLanguage: 'West Flemish (Belgium)', // Default fallback for auto-join
+      });
+    }
+  }, [props.roomName, userChoices]);
+
+  React.useEffect(() => {
+    if (!preJoinChoices) return;
+    let isMounted = true;
+    const loadConnectionDetails = async () => {
+      setIsLoading(true);
+      try {
+        const params = new URLSearchParams({
+          roomName: props.roomName,
+          participantName: preJoinChoices.username || 'Guest',
+        });
+        if (props.region) {
+          params.set('region', props.region);
+        }
+        const response = await fetch(`${CONN_DETAILS_ENDPOINT}?${params.toString()}`);
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(errorText || 'Failed to fetch connection details');
+        }
+        const data = (await response.json()) as ConnectionDetails;
+        if (isMounted) {
+          setConnectionDetails(data);
+          setConnectionError(null);
+        }
+      } catch (error) {
+        console.error('Connection details error', error);
+        if (isMounted) {
+          setConnectionDetails(undefined);
+          setConnectionError(error instanceof Error ? error.message : 'Failed to load connection details');
+        }
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    };
+    loadConnectionDetails();
+    return () => { isMounted = false; };
+  }, [preJoinChoices, props.roomName, props.region]);
+
+  if (isLoading) return <div className={roomStyles.videoPlaceholder}>Loading...</div>;
+
+  return (
+    <main data-lk-theme="default" className="lk-room-container">
+      {connectionDetails === undefined || preJoinChoices === undefined ? (
+        <div style={{ position: 'relative' }}>
+          {connectionError && (
+            <div style={{
+              position: 'fixed',
+              top: '20px',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 9999,
+              backgroundColor: 'rgba(255, 0, 0, 0.9)',
+              color: 'white',
+              padding: '12px 24px',
+              borderRadius: '8px',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+              textAlign: 'center',
+              maxWidth: '80%',
+              fontSize: '14px',
+              fontWeight: 600,
+              border: '1px solid rgba(255,255,255,0.2)'
+            }}>
+              ⚠️ {connectionError}
+            </div>
+          )}
+          <CustomPreJoin
+            roomName={props.roomName}
+            defaults={{
+              username: preJoinDefaults.username,
+              videoEnabled: preJoinDefaults.videoEnabled,
+              audioEnabled: preJoinDefaults.audioEnabled,
+              videoDeviceId: preJoinDefaults.videoDeviceId,
+              audioDeviceId: preJoinDefaults.audioDeviceId,
+            }}
+            onSubmit={handlePreJoinSubmit}
+            onError={handlePreJoinError}
+          />
+        </div>
+      ) : (
+        <VideoConferenceComponent
+          connectionDetails={connectionDetails}
+          userChoices={preJoinChoices}
+          options={{ codec: props.codec, hq: props.hq }}
+        />
+      )}
+    </main>
+  );
+}
+
+import { ConnectionDetails } from '@/lib/types';
+import { EburonControlBar } from '@/lib/EburonControlBar';
+import { subscribeToRoom, tryAcquireSpeaker, releaseSpeaker, claimHost, toggleFloorLock, setConversationMode } from '@/lib/orbit/services/roomStateService';
+
+// ExtendedUserChoices defined below near imports
+function VideoConferenceComponent(props: {
+  userChoices: ExtendedUserChoices;
+  connectionDetails: ConnectionDetails;
+  options: { hq: boolean; codec: VideoCodec };
+}) {
+  const keyProvider = React.useMemo(() => new ExternalE2EEKeyProvider(), []);
+  const { worker, e2eePassphrase } = useSetupE2EE();
+  const e2eeEnabled = !!(e2eePassphrase && worker);
+  const { roomName } = useParams<{ roomName: string }>();
+  const { user } = useAuth();
+
+  const [roomState, setRoomState] = React.useState<RoomState>({
+    hostId: null,
+    activeSpeaker: null,
+    isFloorLocked: false,
+    conversationMode: 'manual',
+    raiseHandQueue: [],
+    lockVersion: 0
+  });
+  const [sourceLanguage, setSourceLanguage] = React.useState('multi');
+  const [targetLanguage, setTargetLanguage] = React.useState(props.userChoices.targetLanguage || 'West Flemish (Belgium)');
+  const [roomId, setRoomId] = React.useState<string | null>(null);
+  const [hostId, setHostId] = React.useState<string | null>(null);
+
+  const roomOptions = React.useMemo((): RoomOptions => {
+    let videoCodec: VideoCodec | undefined = props.options.codec ? props.options.codec : 'vp9';
+    if (e2eeEnabled && (videoCodec === 'av1' || videoCodec === 'vp9')) {
+      videoCodec = undefined;
+    }
+    return {
+      videoCaptureDefaults: {
+        deviceId: props.userChoices.videoDeviceId ?? undefined,
+        resolution: props.options.hq ? VideoPresets.h2160 : VideoPresets.h720,
+      },
+      publishDefaults: {
+        dtx: false,
+        videoSimulcastLayers: props.options.hq
+          ? [VideoPresets.h1080, VideoPresets.h720]
+          : [VideoPresets.h540, VideoPresets.h216],
+        red: !e2eeEnabled,
+        videoCodec,
+      },
+      audioCaptureDefaults: {
+        deviceId: props.userChoices.audioDeviceId ?? undefined,
+      },
+      adaptiveStream: true,
+      dynacast: true,
+      e2ee: keyProvider && worker && e2eeEnabled ? { keyProvider, worker } : undefined,
+      singlePeerConnection: true,
+    };
+  }, [e2eeEnabled, keyProvider, worker, props.userChoices, props.options.hq, props.options.codec]);
+
+  const lkRoom = React.useMemo(() => new Room(roomOptions), [roomOptions]);
+
+  return (
+    <RoomContext.Provider value={lkRoom}>
+      <RoomInner
+        {...props}
+        lkRoom={lkRoom}
+        roomState={roomState}
+        setRoomState={setRoomState}
+        roomName={roomName}
+        user={user}
+        roomId={roomId}
+        setRoomId={setRoomId}
+        hostId={hostId}
+        setHostId={setHostId}
+        sourceLanguage={sourceLanguage}
+        setSourceLanguage={setSourceLanguage}
+        targetLanguage={targetLanguage}
+        setTargetLanguage={setTargetLanguage}
+        e2eeEnabled={e2eeEnabled}
+        e2eePassphrase={e2eePassphrase}
+        keyProvider={keyProvider}
+      />
+    </RoomContext.Provider>
+  );
+}
+
+function RoomInner(props: {
+  userChoices: LocalUserChoices;
+  connectionDetails: ConnectionDetails;
+  options: { hq: boolean; codec: VideoCodec };
+  lkRoom: Room;
+  roomName: string | undefined;
+  user: any;
+  roomState: RoomState;
+  setRoomState: React.Dispatch<React.SetStateAction<RoomState>>;
+  roomId: string | null;
+  setRoomId: React.Dispatch<React.SetStateAction<string | null>>;
+  hostId: string | null;
+  setHostId: React.Dispatch<React.SetStateAction<string | null>>;
+  sourceLanguage: string;
+  setSourceLanguage: React.Dispatch<React.SetStateAction<string>>;
+  targetLanguage: string;
+  setTargetLanguage: React.Dispatch<React.SetStateAction<string>>;
+  e2eeEnabled: boolean;
+  e2eePassphrase?: string;
+  keyProvider: ExternalE2EEKeyProvider;
+}) {
+  const {
+    lkRoom, roomName, user, roomState, setRoomState,
+    roomId, setRoomId, hostId, setHostId,
+    sourceLanguage, setSourceLanguage, targetLanguage, setTargetLanguage,
+    e2eeEnabled, e2eePassphrase, keyProvider
+  } = props;
+
+  const [activeSidebarPanel, setActiveSidebarPanel] = React.useState<SidebarPanel>('participants');
+  const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
+  const [voiceFocusEnabled, setVoiceFocusEnabled] = React.useState(true);
+  const [isGridView, setIsGridView] = React.useState(false);
+  const [vadEnabled, setVadEnabled] = React.useState(true);
+  const [noiseSuppressionEnabled, setNoiseSuppressionEnabled] = React.useState(true);
+  const [echoCancellationEnabled, setEchoCancellationEnabled] = React.useState(true);
+  const [autoGainEnabled, setAutoGainEnabled] = React.useState(true);
+  const [waitingRoomEnabled, setWaitingRoomEnabled] = React.useState(false);
+  const [waitingList, setWaitingList] = React.useState<{ identity: string; name: string }[]>([]);
+  const [admittedIds, setAdmittedIds] = React.useState<Set<string>>(new Set());
+  const [isAppMuted, setIsAppMuted] = React.useState(false);
+  const [e2eeSetupComplete, setE2eeSetupComplete] = React.useState(false);
+
+  const [isListening, setIsListening] = React.useState(false);
+  const { localParticipant } = useLocalParticipant();
+  const remoteParticipants = useRemoteParticipants();
+
+  React.useEffect(() => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('orbit_is_listening', String(isListening));
+    }
+  }, [isListening]);
+
+  // Sync translation config to room metadata for agents
+  React.useEffect(() => {
+    const canUpdateMetadata = localParticipant.permissions?.canUpdateMetadata ?? false;
+    const isAuthorized = canUpdateMetadata && (localParticipant.permissions?.canPublish || hostId === user?.id);
+    if (!isAuthorized) return;
+
+    const metadata = {
+      source_language: sourceLanguage,
+      target_language: targetLanguage,
+      updated_at: Date.now()
+    };
+
+    localParticipant.setMetadata(JSON.stringify({
+      ...JSON.parse(localParticipant.metadata || '{}'),
+      translation_config: metadata
+    })).catch((err) => {
+      console.warn('LocalParticipant metadata update failed:', err);
+    });
+  }, [sourceLanguage, targetLanguage, hostId, user?.id, localParticipant]);
+  const [hearRawAudio, setHearRawAudio] = React.useState(false);
+  const { playClick, playToggle } = useSound();
+  const [aiAgentOnline, setAiAgentOnline] = React.useState(false);
+
+  React.useEffect(() => {
+    const hasAgent = remoteParticipants.some(p => p.identity.toLowerCase().includes('agent') || p.metadata?.toLowerCase().includes('agent'));
+    setAiAgentOnline(hasAgent);
+  }, [remoteParticipants]);
+
+  const { activeSpeakerId: floorSpeakerId, isFloorHolder, claimFloor, grantFloor } = useMeetingFloor(roomName || '', user?.id || '');
+  const [isTranscriptionEnabled, setIsTranscriptionEnabled] = React.useState(false);
+
+
+
+  const [sttEngine, setSttEngine] = React.useState<STTEngine>('eburon-nova');
+  const [translationEngine, setTranslationEngine] = React.useState<TranslationEngine>('eburon-google');
+
+  const inkSTT = useSpeechStream({ model: 'ink-whisper', language: sourceLanguage === 'multi' ? 'en' : sourceLanguage });
+  const deepgramSTT = useVoiceSocket({ model: 'nova-2', language: sourceLanguage === 'multi' ? 'en' : sourceLanguage });
+  const webSpeechSTT = useWebSpeech({ language: sourceLanguage === 'multi' ? 'en' : sourceLanguage });
+
+  const activeSTT = React.useMemo(() => {
+    if (sttEngine === 'eburon-webspeech') return webSpeechSTT;
+    if (sttEngine === 'eburon-nova') return deepgramSTT;
+    return inkSTT;
+  }, [sttEngine, inkSTT, deepgramSTT, webSpeechSTT]);
+
+  const orbitMicState = useOrbitMic({ language: sourceLanguage, passive: true });
+  const isActiveSpeaker = roomState?.activeSpeaker?.userId === user?.id;
+  const translator = useOrbitTranslator({
+    targetLanguage,
+    enabled: isListening,
+    hearRawAudio,
+    isSourceSpeaker: isActiveSpeaker
+  });
+
+  // Start/Stop STT based on translation/transcription needs OR Broadcasting
+  React.useEffect(() => {
+    const activeDeviceId = lkRoom.getActiveDevice('audioinput') ?? props.userChoices.audioDeviceId ?? undefined;
+
+    // Stop background STT if the Success Class (Orbit) panel is active, 
+    // as the iframe handles its own transcription.
+    if (activeSidebarPanel === 'orbit') {
+      if (inkSTT.isListening) inkSTT.stop();
+      if (deepgramSTT.isListening) deepgramSTT.stop();
+      if (webSpeechSTT.isListening) webSpeechSTT.stop();
+      return;
+    }
+
+    const shouldCaptureSpeech = isTranscriptionEnabled || orbitMicState.isRecording || (isListening && isActiveSpeaker);
+
+    if (shouldCaptureSpeech) {
+      if (!activeSTT.isListening) {
+        activeSTT.start(activeDeviceId);
+      }
+    } else {
+      if (activeSTT.isListening) {
+        activeSTT.stop();
+      }
+    }
+  }, [
+    isListening,
+    isTranscriptionEnabled,
+    orbitMicState.isRecording,
+    isActiveSpeaker,
+    sttEngine,
+    activeSTT,
+    inkSTT,
+    deepgramSTT,
+    webSpeechSTT,
+    lkRoom,
+    props.userChoices.audioDeviceId,
+    activeSidebarPanel
+  ]);
+
+  // Feed transcription into translator AND update RTDB
+  React.useEffect(() => {
+    // 1. Translation: Only send if we are BROADCASTING AND we have the floor
+    const shouldBroadcastTranscript = (isListening || orbitMicState.isRecording || isTranscriptionEnabled) && isActiveSpeaker;
+    if (shouldBroadcastTranscript && activeSTT.isFinal && activeSTT.transcript?.trim()) {
+      translator.sendTranscript(activeSTT.transcript, sourceLanguage);
+    }
+
+    // 2. RTDB Sync: Update transcription in RTDB if broadcasting
+    if (orbitMicState.isRecording && activeSTT.transcript?.trim()) {
+      import('@/lib/orbit/services/firebase').then(({ rtdb }) => {
+        import('firebase/database').then(({ ref, update, serverTimestamp }) => {
+          const orbitRef = ref(rtdb, 'orbit/live_state');
+          update(orbitRef, {
+            transcript: activeSTT.transcript,
+            is_final: activeSTT.isFinal,
+            updatedAt: serverTimestamp(),
+            brand: "Orbit"
+          }).catch(e => console.error("Orbit RTDB Update Failed", e));
+        });
+      });
+    }
+  }, [orbitMicState.isRecording, isListening, isTranscriptionEnabled, isActiveSpeaker, sourceLanguage, activeSTT.isFinal, activeSTT.transcript, translator]);
+
+  const audioCaptureOptions = React.useMemo<AudioCaptureOptions>(() => {
+    const activeDeviceId = lkRoom.getActiveDevice('audioinput') ?? props.userChoices.audioDeviceId ?? undefined;
+    return {
+      deviceId: activeDeviceId,
+      channelCount: 1,
+      sampleRate: 48000,
+      autoGainControl: autoGainEnabled,
+      echoCancellation: echoCancellationEnabled,
+      noiseSuppression: noiseSuppressionEnabled,
+      voiceIsolation: voiceFocusEnabled ? true : undefined,
+    };
+  }, [lkRoom, props.userChoices.audioDeviceId, autoGainEnabled, echoCancellationEnabled, noiseSuppressionEnabled, voiceFocusEnabled]);
+
+  const layoutContext = useCreateLayoutContext();
+
+  // Room State Services Subscription
+  React.useEffect(() => {
+    if (!roomName) return;
+    ensureRoomState(roomName);
+    const unsubscribe = subscribeToRoom(roomName, (state: RoomState) => {
+      setRoomState(state);
+      if (state.hostId) setHostId(state.hostId);
+    });
+    return () => unsubscribe();
+  }, [roomName, setRoomState, setHostId]);
+
+
+
+
+
+
+  // E2EE Setup
+  React.useEffect(() => {
+    if (e2eeEnabled && e2eePassphrase) {
+      keyProvider.setKey(decodePassphrase(e2eePassphrase))
+        .then(() => lkRoom.setE2EEEnabled(true))
+        .then(() => setE2eeSetupComplete(true))
+        .catch(console.error);
+    } else {
+      setE2eeSetupComplete(true);
+    }
+  }, [e2eeEnabled, lkRoom, e2eePassphrase, keyProvider]);
+
+  // Room Connection & Events
+  const router = useRouter();
+  React.useEffect(() => {
+    const handleOnLeave = () => { sessionStorage.removeItem('lk_session_storage'); router.push('/'); };
+    lkRoom.on(RoomEvent.Disconnected, handleOnLeave);
+    lkRoom.on(RoomEvent.ParticipantConnected, (p) => {
+      if (waitingRoomEnabled && !p.isLocal) {
+        setWaitingList(prev => [...prev, { identity: p.identity, name: p.name || p.identity }]);
+      } else {
+        setAdmittedIds(prev => new Set(prev).add(p.identity));
+      }
+    });
+    lkRoom.on(RoomEvent.ParticipantDisconnected, (p) => {
+      setWaitingList(prev => prev.filter(w => w.identity !== p.identity));
+      setAdmittedIds(prev => { const next = new Set(prev); next.delete(p.identity); return next; });
+    });
+
+    if (e2eeSetupComplete) {
+      const token = process.env.NEXT_PUBLIC_LIVEKIT_TOKEN || props.connectionDetails.participantToken;
+      const url = process.env.NEXT_PUBLIC_LIVEKIT_URL || props.connectionDetails.serverUrl;
+
+      lkRoom.connect(url, token, { autoSubscribe: true })
+        .then(() => {
+          if (props.userChoices.videoEnabled) lkRoom.localParticipant.setCameraEnabled(true);
+          if (props.userChoices.audioEnabled) lkRoom.localParticipant.setMicrophoneEnabled(true, audioCaptureOptions);
+        })
+        .catch(console.error);
+    }
+    return () => {
+      lkRoom.off(RoomEvent.Disconnected, handleOnLeave);
+      lkRoom.removeAllListeners(RoomEvent.ParticipantConnected);
+      lkRoom.removeAllListeners(RoomEvent.ParticipantDisconnected);
+    };
+  }, [e2eeSetupComplete, lkRoom, props.connectionDetails, props.userChoices, props.options, audioCaptureOptions, waitingRoomEnabled, router]);
+
+  const lowPowerMode = useLowCPUOptimizer(lkRoom);
+
+  const admitParticipant = React.useCallback(async (identity: string) => {
+    setWaitingList(prev => prev.filter(p => p.identity !== identity));
+    setAdmittedIds(prev => new Set(prev).add(identity));
+  }, []);
+
+  const rejectParticipant = React.useCallback(async (identity: string) => {
+    setWaitingList(prev => prev.filter(p => p.identity !== identity));
+    if (!roomName) return;
+    try {
+      await fetch('/api/room/remove', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomName, participantIdentity: identity }),
+      });
+    } catch (e) { console.error(e); }
+  }, [roomName]);
+
+  const handleSidebarPanelToggle = (panel: SidebarPanel) => {
+    setSidebarCollapsed(prev => !prev && activeSidebarPanel === panel);
+    setActiveSidebarPanel(panel);
+  };
+
+  const renderSidebarPanel = () => {
+    if (sidebarCollapsed) return null;
+    switch (activeSidebarPanel) {
+      case 'participants': return (
+        <ParticipantsPanel
+          alias="Participants"
+          waitingRoomEnabled={waitingRoomEnabled}
+          onWaitingRoomToggle={setWaitingRoomEnabled}
+          waitingList={waitingList}
+          onAdmitParticipant={admitParticipant}
+          onRejectParticipant={rejectParticipant}
+          admittedIds={admittedIds}
+          hostIdentity={hostId || undefined}
+          isTranslationAgentEnabled={isListening}
+          onTranslationAgentToggle={setIsListening}
+          translationTargetLanguage={targetLanguage}
+          onTranslationTargetLanguageChange={setTargetLanguage}
+        />
+      );
+      case 'chat': return <ChatPanel />;
+      case 'settings': return <SettingsPanel voiceFocusEnabled={voiceFocusEnabled} onVoiceFocusChange={setVoiceFocusEnabled} vadEnabled={vadEnabled} onVadChange={setVadEnabled} noiseSuppressionEnabled={noiseSuppressionEnabled} onNoiseSuppressionChange={setNoiseSuppressionEnabled} echoCancellationEnabled={echoCancellationEnabled} onEchoCancellationChange={setEchoCancellationEnabled} autoGainEnabled={autoGainEnabled} onAutoGainChange={setAutoGainEnabled} />;
+      case 'orbit': {
+        return (
+          <div style={{ width: '100%', height: '100%', background: '#121212', position: 'relative', overflow: 'hidden' }}>
+            <iframe
+              src={`/success-class.html?embed=true&roomName=${props.roomName}&user=${encodeURIComponent(user?.identity || 'guest')}`}
+              style={{
+                width: '100%',
+                height: '100%',
+                border: 'none',
+                background: 'transparent'
+              }}
+              title="Success Class Translator"
+              allow="microphone; clipboard-write; autoplay"
+            />
+          </div>
+        );
+      }
+      default: return null;
+    }
+  };
+
+  const handleTranscriptionToggle = React.useCallback(async () => {
+    if (!roomName || !user?.id) return;
+    if (!isTranscriptionEnabled) {
+      const speakerId = roomState?.activeSpeaker?.userId;
+      const isSpeakerInRoom = speakerId ? (Array.from(lkRoom.remoteParticipants.values()).some(p => p.identity === speakerId) || lkRoom.localParticipant.identity === speakerId) : false;
+      const success = await tryAcquireSpeaker(roomName, user.id, !!(speakerId && !isSpeakerInRoom));
+      if (success) setIsTranscriptionEnabled(true);
+      else toast.error('Someone else is currently speaking' as any);
+    } else {
+      await releaseSpeaker(roomName, user.id);
+      setIsTranscriptionEnabled(false);
+    }
+  }, [isTranscriptionEnabled, roomName, user?.id, roomState, lkRoom]);
+
+  return (
+    <div className={`lk-room-container ${roomStyles.roomLayout} ${sidebarCollapsed ? roomStyles.roomLayoutCollapsed : ''}`}>
+      <LayoutContextProvider value={layoutContext}>
+
+        <RoomAudioRenderer volume={1} />
+        <ConnectionStateToast />
+
+
+
+        <div className={roomStyles.videoGridContainer}><VideoGrid allowedParticipantIds={admittedIds} isGridView={isGridView} /></div>
+        <div className={`${roomStyles.chatPanel} ${sidebarCollapsed ? roomStyles.chatPanelCollapsed : ''}`}>
+          <button className={roomStyles.sidebarToggle} onClick={() => setSidebarCollapsed(!sidebarCollapsed)} title={sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}>{sidebarCollapsed ? <ChevronLeftIcon /> : <ChevronRightIcon />}</button>
+          <div className={roomStyles.sidebarContent} style={{ overflowY: 'auto', overflowX: 'hidden' }}>{renderSidebarPanel()}</div>
+        </div>
+        <HostCaptionOverlay
+          words={activeSTT.words}
+          isFinal={activeSTT.isFinal}
+          isListening={activeSTT.isListening}
+          analyser={activeSTT.analyser}
+          // Show translation in green if available and user is listening to translation
+          translationText={isListening && translator.incomingTranslations.length > 0 ? translator.incomingTranslations[translator.incomingTranslations.length - 1].text : undefined}
+          isTranslationFinal={true}
+        />
+        <EburonControlBar onParticipantsToggle={() => handleSidebarPanelToggle('participants')} onChatToggle={() => handleSidebarPanelToggle('chat')} onSettingsToggle={() => handleSidebarPanelToggle('settings')} onOrbitToggle={() => handleSidebarPanelToggle('orbit')} onGridToggle={() => setIsGridView(!isGridView)} isGridView={isGridView} onTranscriptionToggle={handleTranscriptionToggle} isParticipantsOpen={!sidebarCollapsed && activeSidebarPanel === 'participants'} isChatOpen={!sidebarCollapsed && activeSidebarPanel === 'chat'} isSettingsOpen={!sidebarCollapsed && activeSidebarPanel === 'settings'} isOrbitOpen={!sidebarCollapsed && activeSidebarPanel === 'orbit'} isTranscriptionOpen={isTranscriptionEnabled} isAppMuted={isAppMuted} onAppMuteToggle={setIsAppMuted} roomState={roomState} userId={user?.id} audioCaptureOptions={audioCaptureOptions} onCaptionToggle={() => setIsTranscriptionEnabled(!isTranscriptionEnabled)} isCaptionOpen={isTranscriptionEnabled} onLanguageChange={setTargetLanguage} orbitMicState={orbitMicState} />
+        <RecordingIndicator />
+      </LayoutContextProvider>
+      <LoginOverlay />
+    </div>
+  );
+}
