@@ -1020,14 +1020,23 @@ async function toggleMic() {
         let lang = document.getElementById('srcLang').value;
         if(lang === 'byv') lang = 'fr'; 
         
-        dgSocket = new WebSocket(`wss://api.deepgram.com/v1/listen?smart_format=true&model=nova-3&interim_results=true&language=${lang}`, ['token', DEEPGRAM_KEY]);
+        dgSocket = new WebSocket(`wss://api.deepgram.com/v1/listen?smart_format=true&model=nova-2&interim_results=true&language=${lang}`, ['token', DEEPGRAM_KEY]);
 
         dgSocket.onopen = () => {
+            console.log("Deepgram Connected");
             mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
             mediaRecorder.addEventListener('dataavailable', e => {
                 if(e.data.size > 0 && dgSocket.readyState === 1) dgSocket.send(e.data);
             });
             mediaRecorder.start(250);
+        };
+
+        dgSocket.onerror = (err) => {
+            console.error("Deepgram Socket Error:", err);
+        };
+
+        dgSocket.onclose = () => {
+            console.log("Deepgram Socket Closed");
         };
 
         dgSocket.onmessage = (msg) => {
