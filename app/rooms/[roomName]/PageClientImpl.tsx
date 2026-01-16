@@ -346,6 +346,9 @@ export function PageClientImpl(props: {
       saveUsername(values.username);
       if (typeof window !== 'undefined') {
         sessionStorage.setItem(`lk_autojoin_${props.roomName}`, 'true');
+        // Sync with success-class.html
+        localStorage.setItem('orbit_room_id', props.roomName);
+        localStorage.setItem('orbit_username', values.username);
       }
       setPreJoinChoices(values);
     },

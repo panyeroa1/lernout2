@@ -399,6 +399,14 @@
           <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
         </svg>
       </button>
+      
+      <button class="share-btn" id="leaveBtn" title="Leave Session" style="background: linear-gradient(145deg, #dc2626, #b91c1c);">
+        <svg class="share-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+          <polyline points="16 17 21 12 16 7"></polyline>
+          <line x1="21" y1="12" x2="9" y2="12"></line>
+        </svg>
+      </button>
     </div>
     
     <!-- Raise Hand Notification Banner -->
@@ -740,11 +748,25 @@
         // Update URL with room ID for easy sharing
         const newUrl = `${window.location.pathname}?room=${CURRENT_ROOM_ID}`;
         window.history.replaceState({}, '', newUrl);
+        
+        // Save session to localStorage for persistence
+        localStorage.setItem('orbit_room_id', CURRENT_ROOM_ID);
+        localStorage.setItem('orbit_username', USER_NAME);
+        localStorage.setItem('orbit_session_active', 'true');
     }
 
-    // Auto-join if room ID is in URL
-    if (urlRoomId) {
-        // Pre-fill the room ID input
+    // Check for saved session first (persistence on refresh)
+    const savedRoomId = localStorage.getItem('orbit_room_id');
+    const savedUsername = localStorage.getItem('orbit_username');
+    const sessionActive = localStorage.getItem('orbit_session_active');
+    
+    if (sessionActive === 'true' && savedRoomId && savedUsername) {
+        // Auto-rejoin saved session
+        USER_NAME = savedUsername;
+        CURRENT_ROOM_ID = savedRoomId;
+        enterSession();
+    } else if (urlRoomId) {
+        // Pre-fill from URL parameter
         ui.classIdInput.value = urlRoomId.toUpperCase();
         
         // Switch to Join tab
@@ -754,10 +776,12 @@
         ui.createMode.classList.add('hidden');
         
         // Check for saved username
-        const savedName = localStorage.getItem('orbit_username');
-        if (savedName) {
-            ui.username.value = savedName;
+        if (savedUsername) {
+            ui.username.value = savedUsername;
         }
+    } else if (savedUsername) {
+        // Pre-fill username if saved
+        ui.username.value = savedUsername;
     }
 
     // === SHARE FUNCTIONALITY ===
@@ -793,6 +817,17 @@
         if(!CURRENT_ROOM_ID) return;
         const msg = `Join my session: ${getShareUrl()}`;
         window.open(`mailto:?subject=Join Orbit Session&body=${encodeURIComponent(msg)}`, '_blank');
+    });
+
+    // Leave session - clear persistence and reload
+    document.getElementById('leaveBtn').addEventListener('click', () => {
+        localStorage.removeItem('orbit_room_id');
+        localStorage.removeItem('orbit_session_active');
+        // Keep username for convenience
+        if (channel) {
+            channel.unsubscribe();
+        }
+        window.location.href = window.location.pathname; // Reload without params
     });
 
     ui.shareFb.addEventListener('click', () => {

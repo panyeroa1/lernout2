@@ -641,18 +641,30 @@ export function EburonControlBar({
       // Add audio tracks
       destination.stream.getAudioTracks().forEach(track => tracks.push(track));
 
-      // For video recording, also capture video
+      // For video recording, capture the screen/tab
       if (selectedType === 'video') {
-        // Capture local camera if enabled
-        const camTrack = localParticipant?.getTrackPublication(Track.Source.Camera)?.track;
-        if (camTrack?.mediaStreamTrack) {
-          tracks.push(camTrack.mediaStreamTrack);
-        }
+        try {
+          // Use getDisplayMedia to capture the meeting view
+          const displayStream = await navigator.mediaDevices.getDisplayMedia({
+            video: {
+              displaySurface: 'browser',
+            },
+            audio: false, // We already have audio from the audio context
+          });
 
-        // Capture screen share if active
-        const screenTrack = localParticipant?.getTrackPublication(Track.Source.ScreenShare)?.track;
-        if (screenTrack?.mediaStreamTrack) {
-          tracks.push(screenTrack.mediaStreamTrack);
+          displayStream.getVideoTracks().forEach(track => {
+            tracks.push(track);
+            // Stop the display stream when recording stops
+            track.onended = () => {
+              if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+                mediaRecorderRef.current.stop();
+                setIsRecording(false);
+              }
+            };
+          });
+        } catch (e) {
+          console.warn('Could not capture display, falling back to audio only:', e);
+          toast.error('Video capture cancelled, recording audio only');
         }
       }
 
