@@ -425,10 +425,6 @@ export function CustomPreJoin({ roomName, onSubmit, onError, defaults }: CustomP
 
       <form className={styles.preJoinContainer} onSubmit={handleSubmit}>
         <div className={styles.preJoinHeader}>
-          <h1 className={styles.preJoinTitle}>
-            SUCCESS <span>CLASS</span>
-          </h1>
-          <p className={styles.preJoinSubtitle}>Room: {roomName}</p>
         </div>
 
         {/* Permission Error */}
@@ -588,9 +584,7 @@ export function CustomPreJoin({ roomName, onSubmit, onError, defaults }: CustomP
           {isLoading ? 'Connecting...' : 'Join Room'}
         </button>
 
-        <Link href="/" className={styles.backLink}>
-          ← Back to Lobby
-        </Link>
+
       </form>
     </div>
   );

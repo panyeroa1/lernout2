@@ -16,6 +16,7 @@ export function useMeetingFloor(roomName: string, userId: string) {
 
   useEffect(() => {
     if (!roomName) return;
+    if (!supabase) return;
 
     // Fetch initial state
     const fetchFloorState = async () => {
@@ -62,6 +63,7 @@ export function useMeetingFloor(roomName: string, userId: string) {
 
   const claimFloor = useCallback(async () => {
     if (!roomName || !userId) return;
+    if (!supabase) return;
 
     const leaseTime = new Date();
     leaseTime.setHours(leaseTime.getHours() + 1); // 1 hour lease
@@ -80,6 +82,7 @@ export function useMeetingFloor(roomName: string, userId: string) {
 
   const grantFloor = useCallback(async (targetUserId: string) => {
     if (!roomName) return;
+    if (!supabase) return;
 
     const leaseTime = new Date();
     leaseTime.setHours(leaseTime.getHours() + 1);

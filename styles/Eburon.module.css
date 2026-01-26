@@ -351,16 +351,14 @@
   transform: translateX(14px);
 }
 
-/* Active (enabled) state - gold for on */
-.controlButtonActive {
-  background: var(--gold);
-  color: #000;
-  box-shadow: 0 4px 14px rgba(212, 175, 55, 0.4);
-  border-color: rgba(255, 255, 255, 0.2);
+/* Active (enabled) state - vibrant green for on */
+.iconActive {
+  color: #2e7d32 !important;
 }
 
-.controlButtonActive:hover {
-  background: #f1c40f;
+/* Muted/disabled state - vibrant red for off */
+.iconMuted {
+  color: #d32f2f !important;
 }
 
 /* Muted/disabled state */
@@ -372,14 +370,14 @@
   opacity: 0.5;
 }
 
-/* Leave button - red */
+/* Leave button - vibrant red gradient */
 .leaveButton {
-  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+  background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);
+  box-shadow: 0 4px 12px rgba(211, 47, 47, 0.4);
 }
 
 .leaveButton:hover {
-  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+  background: linear-gradient(135deg, #d32f2f 0%, #b71c1c 100%);
 }
 
 /* Invite button - gold accent */

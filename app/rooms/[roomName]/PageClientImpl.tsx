@@ -25,6 +25,7 @@ import { useOrbitTranslator } from '@/lib/orbit/hooks/useOrbitTranslator';
 
 import { HostCaptionOverlay } from '@/lib/orbit/components/HostCaptionOverlay';
 import { CinemaCaptionOverlay } from '@/lib/CinemaCaptionOverlay';
+import { DraggableHostVideo } from '@/lib/orbit/components/DraggableHostVideo';
 
 import roomStyles from '@/styles/Eburon.module.css';
 
@@ -93,10 +94,15 @@ const ChevronLeftIcon = () => (
 );
 
 
-
 type SidebarPanel = 'participants' | 'chat' | 'settings' | 'orbit';
 
-function VideoGrid({ allowedParticipantIds, isGridView }: { allowedParticipantIds: Set<string>, isGridView: boolean }) {
+const SidebarIcon = ({ isOpen }: { isOpen: boolean }) => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 3h18v18H3zM9 3v18" />
+  </svg>
+);
+
+function VideoGrid({ allowedParticipantIds, isGridView, hostIdentity, isHostDraggable }: { allowedParticipantIds: Set<string>, isGridView: boolean, hostIdentity?: string | null, isHostDraggable?: boolean }) {
   const layoutContext = useLayoutContext();
   const tracks = useTracks(
     [
@@ -146,6 +152,7 @@ function VideoGrid({ allowedParticipantIds, isGridView }: { allowedParticipantId
   }, [layoutContext, tracks, focusTrackRef]);
 
   const filteredTracks = tracks.filter((track) => {
+    if (isHostDraggable && hostIdentity && track.participant?.identity === hostIdentity) return false;
     if (track.source === Track.Source.ScreenShare) return true;
     if (track.participant?.isLocal) return true;
     if (track.participant && allowedParticipantIds.has(track.participant.identity)) return true;
@@ -316,6 +323,7 @@ export function PageClientImpl(props: {
   const [preJoinChoices, setPreJoinChoices] = React.useState<ExtendedUserChoices>();
   const [isLoading, setIsLoading] = React.useState(false);
   const [connectionError, setConnectionError] = React.useState<string | null>(null);
+  const { user } = useAuth();
 
   const {
     userChoices,
@@ -393,6 +401,9 @@ export function PageClientImpl(props: {
         });
         if (props.region) {
           params.set('region', props.region);
+        }
+        if (user?.id) {
+          params.set('metadata', user.id);
         }
         const response = await fetch(`${CONN_DETAILS_ENDPOINT}?${params.toString()}`);
         if (!response.ok) {
@@ -596,8 +607,21 @@ function RoomInner(props: {
   const [e2eeSetupComplete, setE2eeSetupComplete] = React.useState(false);
 
   const [isListening, setIsListening] = React.useState(false);
+  const [isHostDraggable, setIsHostDraggable] = React.useState(true);
   const { localParticipant } = useLocalParticipant();
   const remoteParticipants = useRemoteParticipants();
+
+  // Host track for draggable component
+  const allTracks = useTracks([{ source: Track.Source.Camera, withPlaceholder: true }]);
+  const hostTrack = React.useMemo(() => {
+    if (!hostId) return undefined;
+    return allTracks.find(t =>
+      t.participant.identity === hostId ||
+      t.participant.metadata === hostId ||
+      t.participant.sid === hostId
+    );
+  }, [allTracks, hostId]);
+
 
   React.useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -745,6 +769,11 @@ function RoomInner(props: {
     const unsubscribe = subscribeToRoom(roomName, (state: RoomState) => {
       setRoomState(state);
       if (state.hostId) setHostId(state.hostId);
+
+      // Auto-claim host if none exists and user is authenticated
+      if (!state.hostId && user?.id) {
+        claimHost(roomName, user.id);
+      }
     });
     return () => unsubscribe();
   }, [roomName, setRoomState, setHostId]);
@@ -890,7 +919,38 @@ function RoomInner(props: {
 
 
 
-        <div className={roomStyles.videoGridContainer}><VideoGrid allowedParticipantIds={admittedIds} isGridView={isGridView} /></div>
+        <div className={roomStyles.videoGridContainer}>
+          <VideoGrid allowedParticipantIds={admittedIds} isGridView={isGridView} hostIdentity={hostId} isHostDraggable={isHostDraggable} />
+          {isHostDraggable && hostTrack && (
+            <DraggableHostVideo trackRef={hostTrack} onClose={() => setIsHostDraggable(false)} />
+          )}
+          {!isHostDraggable && hostId && (
+            <button
+              onClick={() => setIsHostDraggable(true)}
+              style={{
+                position: 'fixed',
+                top: '20px',
+                left: '20px',
+                zIndex: 1001,
+                background: 'rgba(0,0,0,0.6)',
+                border: '1px solid rgba(255,255,255,0.2)',
+                color: '#fff',
+                padding: '8px 12px',
+                borderRadius: '8px',
+                fontSize: '11px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                backdropFilter: 'blur(8px)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" /></svg>
+              SHOW {hostId === user?.id ? 'MY' : 'HOST'} VIDEO
+            </button>
+          )}
+        </div>
         <div className={`${roomStyles.chatPanel} ${sidebarCollapsed ? roomStyles.chatPanelCollapsed : ''}`}>
           <button className={roomStyles.sidebarToggle} onClick={() => setSidebarCollapsed(!sidebarCollapsed)} title={sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}>{sidebarCollapsed ? <ChevronLeftIcon /> : <ChevronRightIcon />}</button>
           <div className={roomStyles.sidebarContent} style={{ overflowY: 'auto', overflowX: 'hidden' }}>{renderSidebarPanel()}</div>

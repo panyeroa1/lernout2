@@ -2,6 +2,8 @@ import { dbClient as supabase } from './dbClient';
 import { RoomState } from '../types';
 
 export async function getRoomState(meetingId: string): Promise<RoomState> {
+  if (!supabase) return { hostId: null, activeSpeaker: null, isFloorLocked: false, conversationMode: 'manual', raiseHandQueue: [], lockVersion: 0 };
+
   const { data, error } = await supabase
     .from('meetings')
     .select('*')
@@ -31,6 +33,8 @@ export async function getRoomState(meetingId: string): Promise<RoomState> {
 }
 
 export function subscribeToRoom(meetingId: string, callback: (state: RoomState) => void) {
+  if (!supabase) return () => { };
+
   // Fetch initial state immediately
   getRoomState(meetingId).then(state => callback(state));
 
@@ -64,6 +68,8 @@ export function subscribeToRoom(meetingId: string, callback: (state: RoomState) 
 }
 
 export async function ensureMeetingRow(meetingId: string) {
+  if (!supabase) return;
+
   const { data: existing } = await supabase
     .from('meetings')
     .select('meeting_id')
@@ -76,7 +82,9 @@ export async function ensureMeetingRow(meetingId: string) {
 }
 
 export async function tryAcquireSpeaker(meetingId: string, userId: string, force: boolean = false): Promise<boolean> {
+  if (!supabase) return false;
   await ensureMeetingRow(meetingId);
+
 
   // Optimistic locking: Update if NULL OR if I am already the speaker
   let query = supabase
@@ -94,7 +102,9 @@ export async function tryAcquireSpeaker(meetingId: string, userId: string, force
 }
 
 export async function releaseSpeaker(meetingId: string, userId: string) {
+  if (!supabase) return;
   // Silent release for both possible columns
+
   try {
     await supabase
       .from('meetings')
@@ -105,7 +115,9 @@ export async function releaseSpeaker(meetingId: string, userId: string) {
 }
 
 export async function claimHost(meetingId: string, userId: string) {
+  if (!supabase) return;
   await ensureMeetingRow(meetingId);
+
   await supabase
     .from('meetings')
     .update({ host_id: userId })
@@ -114,14 +126,18 @@ export async function claimHost(meetingId: string, userId: string) {
 }
 
 export async function toggleFloorLock(meetingId: string, locked: boolean) {
+  if (!supabase) return;
   await supabase
+
     .from('meetings')
     .update({ is_floor_locked: locked })
     .eq('meeting_id', meetingId);
 }
 
 export async function setConversationMode(meetingId: string, mode: 'manual' | 'round-robin') {
+  if (!supabase) return;
   await supabase
+
     .from('meetings')
     .update({ conversation_mode: mode })
     .eq('meeting_id', meetingId);

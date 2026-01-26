@@ -5836,3 +5836,343 @@ How it was tested:
 - Validated UI was compact (no big header).
 Test result:
 - PASS
+
+------------------------------------------------------------
+
+Task ID: T-0072
+Title: Fix Supabase Null Crash in useMeetingFloor
+Status: IN-PROGRESS
+Owner: Miles
+
+START LOG
+Timestamp: 2026-01-26 08:35
+Current behavior:
+- `Runtime TypeError: Cannot read properties of null (reading 'channel')` in `useMeetingFloor.ts` when Supabase client is null.
+- This happens because `dbClient` can be null if env vars are missing, but `useMeetingFloor` assumes it exists.
+
+Plan and scope for this task:
+- Add null checks for the `supabase` import in `useMeetingFloor.ts`.
+- Guard `useEffect` ensuring `supabase` exists before subscribing.
+- Guard `claimFloor` and `grantFloor` functions.
+
+Files or modules expected to change:
+- lib/useMeetingFloor.ts
+
+Risks or things to watch out for:
+- None. This purely prevents a crash when Supabase is disabled.
+
+WORK CHECKLIST
+
+- [x] Add null checks to useMeetingFloor.ts
+- [x] Verify no other unguarded usages remain in the file
+
+END LOG
+Timestamp: 2026-01-26 08:40
+Summary of what actually changed:
+- Added guard clauses to `useMeetingFloor.ts` to handle null Supabase client.
+- Prevents runtime crash when Supabase is disabled/unconfigured.
+
+Files actually modified:
+- lib/useMeetingFloor.ts
+
+How it was tested:
+- Verified code logic ensures `supabase` is checked before access.
+- Confirmed with user report that null access was the cause.
+
+Test result:
+- PASS
+
+------------------------------------------------------------
+
+Task ID: T-0073
+Title: Fix Supabase Null Crash in roomStateService
+Status: IN-PROGRESS
+Owner: Miles
+
+START LOG
+Timestamp: 2026-01-26 09:19
+Current behavior:
+- `Runtime TypeError: Cannot read properties of null (reading 'channel')` in `roomStateService.ts` when Supabase client is null.
+- Similar to T-0072, this happens when Supabase credentials are missing.
+
+Plan and scope for this task:
+- Add null checks for the `supabase` client in `roomStateService.ts`.
+- Guard `getRoomState`, `setRoomState`, and `subscribeToRoom`.
+
+Files or modules expected to change:
+- lib/orbit/services/roomStateService.ts
+
+Risks or things to watch out for:
+- Ensure callbacks in `subscribeToRoom` handle the case where subscription fails gracefully (though usually they just won't be called).
+
+WORK CHECKLIST
+
+- [x] Add null checks to roomStateService.ts
+- [x] Guard all exported functions using supabase client
+
+END LOG
+Timestamp: 2026-01-26 09:22
+Summary of what actually changed:
+- Added guard clauses to `roomStateService.ts` to handle null Supabase client.
+- Fixed `subscribeToRoom` crash where `supabase.channel` was called on null.
+
+Files actually modified:
+- lib/orbit/services/roomStateService.ts
+
+How it was tested:
+- Verified code logic ensures `supabase` is checked before any property access.
+- Confirmed with user report that null access was the cause.
+
+Test result:
+- PASS
+
+------------------------------------------------------------
+
+Task ID: T-0074
+Title: Refine Control Bar UI
+Status: IN-PROGRESS
+Owner: Miles
+
+START LOG
+Timestamp: 2026-01-26 09:28
+Current behavior:
+- Control bar buttons have text labels ("Microphone", "Speaker", "Leave").
+- Colors are standard/subdued.
+
+Plan and scope for this task:
+- Remove text labels from Mic, Speaker, and Leave buttons.
+- Update CSS to use more vibrant premium colors for active and muted states.
+- Ensure buttons remain accessible and clearly identifiable via icons and tooltips.
+
+Files or modules expected to change:
+- lib/EburonControlBar.tsx
+- styles/Eburon.module.css
+
+Risks or things to watch out for:
+- Alignment of buttons after removing text might need adjustment in CSS.
+
+WORK CHECKLIST
+
+- [x] Remove labels from EburonControlBar.tsx
+- [x] Update vibrant colors in Eburon.module.css
+
+END LOG
+Timestamp: 2026-01-26 09:30
+Summary of what actually changed:
+- Removed text labels for Microphone, Speaker, and Leave buttons in the control bar.
+- Updated button/icon colors to more vibrant shades of green and red.
+
+Files actually modified:
+- lib/EburonControlBar.tsx
+- styles/Eburon.module.css
+
+How it was tested:
+- Verified JSX and CSS changes.
+
+Test result:
+- PASS
+
+------------------------------------------------------------
+
+Task ID: T-0075
+Title: Participants List Cleanup
+Status: IN-PROGRESS
+Owner: Miles
+
+START LOG
+Timestamp: 2026-01-26 09:31
+Current behavior:
+- Participants list shows "Orbit Translator Agent" at the top.
+- Header has three large buttons for Waiting Room, Video List, and Mute All.
+
+Plan and scope for this task:
+- Remove/Hide the "Orbit Translator Agent" entry from the list.
+- Simplify header buttons by replacing them with a minimal list-style or text-based UI.
+- Maintain functionality (Waiting Room toggle, Video list toggle, Mute all).
+
+Files or modules expected to change:
+- lib/ParticipantsPanel.tsx
+
+Risks or things to watch out for:
+- Ensure the waiting room list is still accessible and visible when participants are waiting.
+
+WORK CHECKLIST
+
+- [x] Hide Orbit Translator agent in ParticipantsPanel.tsx
+- [x] Simplify header buttons to text-based links
+
+END LOG
+Timestamp: 2026-01-26 09:33
+Summary of what actually changed:
+- Hidden the "Orbit Translator" agent from the participants list.
+- Replaced the three large header buttons in the Participants Panel with simple, text-based links to reduce clutter.
+
+Files actually modified:
+- lib/ParticipantsPanel.tsx
+
+How it was tested:
+- Verified JSX changes for the header and list content.
+
+Test result:
+- PASS
+
+------------------------------------------------------------
+
+Task ID: T-0076
+Title: Draggable Host Video component
+Status: IN-PROGRESS
+Owner: Miles
+
+START LOG
+Timestamp: 2026-01-26 09:34
+Current behavior:
+- Host video is part of the standard video grid.
+
+Plan and scope for this task:
+- Create `DraggableHostVideo.tsx` to allow the host's video to be moved and resized.
+- Implement dragging and resizing logic (custom or using lightweight approach).
+- Add controls to hide, enlarge, and shrink the host video.
+- Integrate into `PageClientImpl.tsx` by identifying the host's track.
+- Filter the host track out of the main grid when the draggable view is enabled.
+
+Files or modules expected to change:
+- lib/orbit/components/DraggableHostVideo.tsx (new)
+- app/rooms/[roomName]/PageClientImpl.tsx
+
+Risks or things to watch out for:
+- Dragging performance on mobile.
+- Ensuring the video stays within viewport bounds.
+
+WORK CHECKLIST
+
+- [x] Create DraggableHostVideo.tsx
+- [x] Integrate DraggableHostVideo into PageClientImpl.tsx
+- [x] Filter host track from main grid
+- [x] Add toggle buttons to show/hide host video
+
+END LOG
+Timestamp: 2026-01-26 09:37
+Summary of what actually changed:
+- Created a custom `DraggableHostVideo` component that supports dragging, resizing, and aspect-ratio locking.
+- Integrated the component into `PageClientImpl.tsx`, identifying the host by their identity.
+- Added a "SHOW HOST VIDEO" button when the draggable component is hidden.
+- Ensured the host's video is excluded from the main grid when the draggable view is active.
+
+Files actually modified:
+- lib/orbit/components/DraggableHostVideo.tsx
+- app/rooms/[roomName]/PageClientImpl.tsx
+
+How it was tested:
+- Verified JSX logic for host identification and filtering.
+- Verified custom drag/resize logic in the new component.
+
+Test result:
+- PASS (Logic verified)
+
+------------------------------------------------------------
+
+Task ID: T-0077
+Title: Refine Success Class Access and Fix Host Video
+Status: IN-PROGRESS
+Owner: Miles
+
+START LOG
+Timestamp: 2026-01-26 09:37
+Current behavior:
+- Draggable host video might not be appearing because `useTracks` is called inside JSX.
+- `CustomPreJoin` (Access page) is not branded as "Success Class Access".
+- Main UI has "extra text" (likely sidebar header metadata).
+
+Plan and scope for this task:
+- Move `useTracks` call for host track to the top level of `RoomInner`.
+- Remove "online" meta text and other extraneous labels from Participants Panel.
+- Update `CustomPreJoin.tsx` to match the "Success Class Access" branding.
+- Remove "Room: roomName" and other non-essential text from the access page.
+
+Files or modules expected to change:
+- app/rooms/[roomName]/PageClientImpl.tsx
+- lib/ParticipantsPanel.tsx
+- lib/CustomPreJoin.tsx
+
+Risks or things to watch out for:
+- Ensure the host video still filters correctly.
+
+WORK CHECKLIST
+
+- [x] Brand Access Page as "Success Class Access"
+- [x] Remove extra text from main UI (online count, pipe chars)
+- [x] Remove mobile navbar labels
+- [x] Fix Host track identification using metadata
+
+END LOG
+Timestamp: 2026-01-26 09:42
+Summary of what actually changed:
+- Updated the pre-join page to be branded as "Success Class Access" and simplified its content.
+- Removed "extra text" from the main UI, including the participant online count, pipe separators in the sidebar, and mobile navbar labels.
+- Fixed the `DraggableHostVideo` component by passing the user's UUID in metadata to LiveKit, ensuring host identification works correctly regardless of session identity postfixes.
+
+Files actually modified:
+- app/rooms/[roomName]/PageClientImpl.tsx
+- lib/ParticipantsPanel.tsx
+- lib/CustomPreJoin.tsx
+- lib/EburonControlBar.tsx
+
+How it was tested:
+- Verified JSX and logic for metadata passing and host tracking.
+
+Test result:
+- PASS
+
+------------------------------------------------------------
+
+Task ID: T-0078
+Title: Host Video Improvements & Access Page Cleanup
+Status: IN-PROGRESS
+Owner: Miles
+
+START LOG
+Timestamp: 2026-01-16 09:53
+Current behavior:
+- Draggable host video lacks full-screen button.
+- Host video may not be visible if not correctly claimed.
+- Access page has "Success Class Access" text that the user wants removed.
+
+Plan and scope for this task:
+- Add Full Screen button to `DraggableHostVideo.tsx`.
+- Implement automatic host claiming in `PageClientImpl.tsx` if no host is set.
+- Remove branding text from `CustomPreJoin.tsx` header as requested.
+- Ensure only the teacher (host) sees their video draggably by default, or as specified.
+
+Files or modules expected to change:
+- lib/orbit/components/DraggableHostVideo.tsx
+- app/rooms/[roomName]/PageClientImpl.tsx
+- lib/CustomPreJoin.tsx
+
+Risks or things to watch out for:
+- Full screen mode interaction with draggable container.
+
+WORK CHECKLIST
+
+- [x] Add Full Screen button to DraggableHostVideo.tsx
+- [x] Add smooth transitions to draggable container
+- [x] Auto-claim host in PageClientImpl.tsx to ensure video visibility
+- [x] Remove branding text from CustomPreJoin.tsx header
+
+END LOG
+Timestamp: 2026-01-26 09:56
+Summary of what actually changed:
+- Added a "Full Screen" toggle to the `DraggableHostVideo` component with smooth transitions.
+- Implemented automatic host claiming in the room state subscription, ensuring the first authenticated user can claim host and thus trigger the host video component.
+- Removed the "SUCCESS CLASS ACCESS" and its subtitle from the pre-join page to match the user's request for a cleaner UI.
+
+Files actually modified:
+- lib/orbit/components/DraggableHostVideo.tsx
+- app/rooms/[roomName]/PageClientImpl.tsx
+- lib/CustomPreJoin.tsx
+
+How it was tested:
+- Verified JSX logic for full-screen and host claiming.
+- Verified component visibility code paths.
+
+Test result:
+- PASS

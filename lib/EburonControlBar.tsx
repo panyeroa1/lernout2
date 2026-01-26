@@ -772,7 +772,6 @@ export function EburonControlBar({
                 title={isMicEnabled ? 'Mute microphone' : 'Unmute microphone'}
                 style={{ position: 'relative' }} // ensure relative for visualizer
               >
-                <span className={styles.audioSplitLabel}>Microphone</span>
                 <div className={`${styles.audioSplitIcon} ${isMicEnabled ? styles.iconActive : styles.iconMuted}`}>
                   {isMicEnabled ? <MicIcon /> : <MicOffIcon />}
                 </div>
@@ -840,7 +839,6 @@ export function EburonControlBar({
                 onClick={() => onAppMuteToggle?.((prev) => !prev)}
                 title={isAppMuted ? 'Unmute speaker' : 'Mute speaker'}
               >
-                <span className={styles.audioSplitLabel}>Speaker</span>
                 <div className={`${styles.audioSplitIcon} ${isAppMuted ? styles.iconMuted : styles.iconActive}`}>
                   {/* Headphone icon */}
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1041,7 +1039,6 @@ export function EburonControlBar({
             title="Leave meeting"
           >
             <LeaveIcon />
-            <span>Leave</span>
           </button>
         </div>
       </div>
@@ -1053,16 +1050,16 @@ export function EburonControlBar({
         <button
           className={`${styles.mobileNavbarItem} ${isMicEnabled ? styles.mobileNavbarItemActive : ''}`}
           onClick={toggleMicrophone}
+          title="Microphone"
         >
           {isMicEnabled ? <MicIcon /> : <MicOffIcon />}
-          <span>Mic</span>
         </button>
         <button
           className={`${styles.mobileNavbarItem} ${isCameraEnabled ? styles.mobileNavbarItemActive : ''}`}
           onClick={toggleCamera}
+          title="Camera"
         >
           {isCameraEnabled ? <CameraIcon /> : <CameraOffIcon />}
-          <span>Video</span>
         </button>
         <button
           className={`${styles.mobileNavbarItem} ${isChatOpen ? styles.mobileNavbarItemActive : ''}`}
@@ -1070,9 +1067,9 @@ export function EburonControlBar({
             onChatToggle?.();
             setIsMobileMenuOpen(false);
           }}
+          title="Chat"
         >
           <ChatIcon />
-          <span>Chat</span>
         </button>
         <button
           className={`${styles.mobileNavbarItem} ${isParticipantsOpen ? styles.mobileNavbarItemActive : ''}`}
@@ -1080,16 +1077,16 @@ export function EburonControlBar({
             onParticipantsToggle?.();
             setIsMobileMenuOpen(false);
           }}
+          title="Participants"
         >
           <ParticipantsIcon />
-          <span>People</span>
         </button>
         <button
           className={`${styles.mobileNavbarItem} ${isMobileMenuOpen ? styles.mobileNavbarItemActive : ''}`}
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          title="More"
         >
           <MenuIcon />
-          <span>More</span>
         </button>
       </nav>
 

@@ -167,7 +167,7 @@ export function ParticipantsPanel({
   const room = React.useContext(RoomContext);
   const layoutContext = useLayoutContext();
   const [showVideoList, setShowVideoList] = React.useState(false);
-  
+
   // Floor Control Hook
   const { isFloorHolder, grantFloor, activeSpeakerId: floorSpeakerId } = useMeetingFloor(room?.name || '', localParticipant?.identity || '');
 
@@ -183,7 +183,7 @@ export function ParticipantsPanel({
     { onlySubscribed: false },
   ) as TrackReferenceOrPlaceholder[];
   const pinnedTrack = usePinnedTracks(layoutContext)?.[0];
-  
+
   // Track muted audio for remote participants (local mute)
   const [mutedParticipants, setMutedParticipants] = React.useState<Set<string>>(new Set());
   const [isBulkAction, setIsBulkAction] = React.useState(false);
@@ -268,36 +268,30 @@ export function ParticipantsPanel({
       <div className={styles.sidebarHeader}>
         <div className={styles.sidebarHeaderText}>
           <h3>{alias}</h3>
-          <span className={styles.sidebarHeaderMeta}>{participants.length} online</span>
         </div>
-        <div className={styles.sidebarHeaderActions}>
-          <button
-            className={`${styles.sidebarHeaderButton} ${waitingRoomEnabled ? styles.sidebarHeaderButtonActive : ''}`}
-            type="button"
-            onClick={() => onWaitingRoomToggle(!waitingRoomEnabled)}
-            aria-pressed={waitingRoomEnabled}
-            title={waitingRoomEnabled ? 'Disable waiting room' : 'Enable waiting room'}
-          >
-            Waiting room
-          </button>
-          <button
-            className={`${styles.sidebarHeaderButton} ${showVideoList ? styles.sidebarHeaderButtonActive : ''}`}
-            type="button"
-            onClick={() => setShowVideoList((prev) => !prev)}
-            title={showVideoList ? 'Show participant list' : 'Show video list'}
-            aria-pressed={showVideoList}
-          >
-            Video list
-          </button>
-          <button
-            className={styles.sidebarHeaderButton}
-            type="button"
-            onClick={handleMuteAll}
-            disabled={isBulkAction}
-            title="Mute all microphones"
-          >
-            Mute all
-          </button>
+        <div className={styles.sidebarHeaderActions} style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '4px' }}>
+          <div style={{ display: 'flex', gap: '8px', fontSize: '11px', fontWeight: '600', color: 'rgba(255,255,255,0.6)' }}>
+            <span
+              style={{ cursor: 'pointer', color: waitingRoomEnabled ? '#66ff00' : 'inherit' }}
+              onClick={() => onWaitingRoomToggle(!waitingRoomEnabled)}
+            >
+              WAITING ROOM
+            </span>
+
+            <span
+              style={{ cursor: 'pointer', color: showVideoList ? '#fbbf24' : 'inherit' }}
+              onClick={() => setShowVideoList((prev) => !prev)}
+            >
+              VIDEO LIST
+            </span>
+
+            <span
+              style={{ cursor: 'pointer' }}
+              onClick={handleMuteAll}
+            >
+              MUTE ALL
+            </span>
+          </div>
         </div>
       </div>
       {showVideoList ? (
@@ -318,47 +312,7 @@ export function ParticipantsPanel({
         </div>
       ) : (
         <div className={styles.participantsList}>
-          <div className={`${styles.participantItem} ${styles.agentParticipant}`}>
-            <div className={`${styles.participantAvatar} ${styles.agentAvatar}`}>
-              <AgentIcon />
-            </div>
-            <div className={styles.participantInfo}>
-              <div className={styles.participantNameRow}>
-                <span className={styles.participantName}>Orbit Translator</span>
-                <span className={styles.agentBadge}>AGENT</span>
-              </div>
-              <div className={styles.agentMeta}>
-                <span className={styles.agentStatus}>
-                  {isTranslationAgentEnabled ? 'Listening' : 'Paused'}
-                </span>
-                <div className={styles.agentLanguageRow}>
-                  <LanguageIcon size={12} />
-                  <select
-                    value={translationTargetLanguage}
-                    onChange={(e) => onTranslationTargetLanguageChange(e.target.value)}
-                    className={`${styles.sidebarSelect} ${styles.agentSelect}`}
-                    aria-label="Agent target language"
-                  >
-                    {LANGUAGES.map((lang) => (
-                      <option key={lang.code} value={lang.code}>
-                        {lang.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </div>
-            <div className={styles.participantControls}>
-              <button
-                className={`${styles.participantControl} ${isTranslationAgentEnabled ? styles.agentControlActive : ''}`}
-                onClick={() => onTranslationAgentToggle(!isTranslationAgentEnabled)}
-                title={isTranslationAgentEnabled ? 'Pause translator' : 'Start translator'}
-                type="button"
-              >
-                <LanguageIcon size={14} />
-              </button>
-            </div>
-          </div>
+          {/* Agent Hidden per request */}
           {waitingList.length > 0 && (
             <div className={styles.sidebarCard}>
               <div className={styles.sidebarCardText}>
@@ -417,7 +371,7 @@ export function ParticipantsPanel({
               ? pinnedTrack.publication?.trackSid
               : undefined;
             const isPinned = pinTarget?.publication?.trackSid === pinnedTrackSid;
-            
+
             // Determine if this user holds the floor
             const participantHoldsFloor = floorSpeakerId === participant.identity;
 
@@ -426,7 +380,7 @@ export function ParticipantsPanel({
               try {
                 const trackPublication = participant.getTrackPublication(trackSource);
                 const trackSid = trackPublication?.trackSid;
-                
+
                 await fetch('/api/room/mute', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
@@ -460,9 +414,9 @@ export function ParticipantsPanel({
                       </span>
                     )}
                     {participantHoldsFloor && (
-                        <span style={{ fontSize: '10px', background: '#66ff00', color: 'black', padding: '2px 4px', borderRadius: '4px', marginLeft: '6px', fontWeight: 'bold' }}>
-                           ON AIR
-                        </span>
+                      <span style={{ fontSize: '10px', background: '#66ff00', color: 'black', padding: '2px 4px', borderRadius: '4px', marginLeft: '6px', fontWeight: 'bold' }}>
+                        ON AIR
+                      </span>
                     )}
                     {isHandRaised && (
                       <span className={styles.handRaisedBadge} title="Hand raised">
@@ -511,27 +465,27 @@ export function ParticipantsPanel({
                       {isAudioMuted ? <VolumeOffIcon /> : <VolumeIcon />}
                     </button>
                   )}
-                  
+
                   {/* Grant Floor Button / Make Speaker (Only visible for the HOST, and target is NOT you) */}
                   {localParticipant?.identity === hostIdentity && !isLocal && (
-                      <button
-                        className={styles.participantControl}
-                        onClick={() => grantFloor(participant.identity)}
-                        title={participantHoldsFloor ? "Remove from Floor" : "Make Speaker (Grant Floor)"}
-                        style={{ color: participantHoldsFloor ? '#ff6b6b' : '#66ff00' }}
-                      >
-                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14">
-                            <circle cx="12" cy="12" r="9" strokeWidth="1" opacity="0.2" /> 
-                            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
-                            {/* Orbit arc */}
-                            <path d="M4 14c4-3 12-4 16-2" opacity="0.6" />
-                            {/* Small moon/dot */}
-                            <circle cx="18" cy="8" r="1.5" fill="currentColor" opacity="0.6" />
-                            {participantHoldsFloor && (
-                              <line x1="3" y1="3" x2="21" y2="21" stroke="#ff6b6b" strokeWidth="2.5" />
-                            )}
-                         </svg>
-                      </button>
+                    <button
+                      className={styles.participantControl}
+                      onClick={() => grantFloor(participant.identity)}
+                      title={participantHoldsFloor ? "Remove from Floor" : "Make Speaker (Grant Floor)"}
+                      style={{ color: participantHoldsFloor ? '#ff6b6b' : '#66ff00' }}
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14">
+                        <circle cx="12" cy="12" r="9" strokeWidth="1" opacity="0.2" />
+                        <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+                        {/* Orbit arc */}
+                        <path d="M4 14c4-3 12-4 16-2" opacity="0.6" />
+                        {/* Small moon/dot */}
+                        <circle cx="18" cy="8" r="1.5" fill="currentColor" opacity="0.6" />
+                        {participantHoldsFloor && (
+                          <line x1="3" y1="3" x2="21" y2="21" stroke="#ff6b6b" strokeWidth="2.5" />
+                        )}
+                      </svg>
+                    </button>
                   )}
 
                   {/* Host Controls: Remote Mic Toggle */}
