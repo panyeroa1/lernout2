@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server';
 export async function POST(request: Request) {
   try {
     const { text } = await request.json();
-    
+
     const apiKey = process.env.ORBIT_API_KEY || process.env.CARTESIA_API_KEY;
     if (!apiKey) {
       console.warn("Orbit API key not configured, returning mock audio (sine wave)");
@@ -17,10 +17,10 @@ export async function POST(request: Request) {
       for (let i = 0; i < numSamples; i++) {
         buffer[i] = Math.sin(2 * Math.PI * freq * (i / sampleRate)) * 0.5;
       }
-      
+
       return new NextResponse(buffer.buffer as ArrayBuffer, {
         headers: {
-            'Content-Type': 'audio/wav', // or audio/pcm if handled raw
+          'Content-Type': 'audio/wav', // or audio/pcm if handled raw
         }
       });
     }
@@ -33,11 +33,11 @@ export async function POST(request: Request) {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        model_id: process.env.CARTESIA_MODEL_ID || "sonic-3-latest",
+        model_id: process.env.CARTESIA_MODEL_ID || "sonic-english", // or sonic-multilingual if needed
         transcript: text,
         voice: {
           mode: "id",
-          id: process.env.CARTESIA_VOICE_ID || "dda33d93-9f12-4a59-806e-a98279ebf050"
+          id: process.env.CARTESIA_VOICE_ID || "79f8b5fb-2cc8-479a-80df-29f7a7cf1a3e" // High quality neutral voice
         },
         output_format: {
           container: "wav",
@@ -45,7 +45,10 @@ export async function POST(request: Request) {
           sample_rate: 44100
         },
         speed: "normal",
-        generation_config: { speed: 1, volume: 1 }
+        generation_config: {
+          speed: "normal",
+          volume: "loud"
+        }
       })
     });
 

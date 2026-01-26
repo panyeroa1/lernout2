@@ -206,16 +206,15 @@ export function useOrbitTranslator(options: UseOrbitTranslatorOptions): UseOrbit
     duckStoreRef.current.clear();
   }, []);
 
-  // Process TTS queue sequentially with ducking
   const processTTSQueue = useCallback(async () => {
     if (isSpeakingRef.current || ttsQueueRef.current.length === 0) return;
 
     isSpeakingRef.current = true;
-    resumeAudioContext(); // Ensure AudioContext is running
+    resumeAudioContext();
     const next = ttsQueueRef.current.shift();
 
     if (next && audioRef.current) {
-      duckOtherMedia(); // Duck before playing
+      duckOtherMedia();
 
       let attempts = 0;
       let success = false;
@@ -240,32 +239,38 @@ export function useOrbitTranslator(options: UseOrbitTranslatorOptions): UseOrbit
                 resolve();
                 return;
               }
-              audioRef.current.onended = () => {
-                URL.revokeObjectURL(url);
+              const onEnded = () => {
+                cleanup();
                 resolve();
               };
-              audioRef.current.onerror = () => {
-                URL.revokeObjectURL(url);
+              const onError = () => {
+                cleanup();
                 resolve();
               };
-              audioRef.current.play().catch(() => resolve());
+              const cleanup = () => {
+                if (audioRef.current) {
+                  audioRef.current.onended = null;
+                  audioRef.current.onerror = null;
+                }
+                URL.revokeObjectURL(url);
+              };
+              audioRef.current.onended = onEnded;
+              audioRef.current.onerror = onError;
+              audioRef.current.play().catch(() => {
+                cleanup();
+                resolve();
+              });
             });
             success = true;
           } else {
-            console.warn(`[Orbit] TTS Fetch failed (Attempt ${attempts}): ${response.status}`);
             if (attempts < MAX_TTS_RETRIES) await new Promise(r => setTimeout(r, 500));
           }
         } catch (e) {
-          console.error(`[Orbit] TTS synthesis error (Attempt ${attempts}):`, e);
           if (attempts < MAX_TTS_RETRIES) await new Promise(r => setTimeout(r, 500));
         }
       }
 
-      if (!success) {
-        console.error(`[Orbit] Failed to synthesize TTS for text: "${next.text.substring(0, 20)}..." after ${MAX_TTS_RETRIES} attempts.`);
-      }
-
-      restoreOtherMedia(); // Restore after playing
+      restoreOtherMedia();
     }
 
     isSpeakingRef.current = false;

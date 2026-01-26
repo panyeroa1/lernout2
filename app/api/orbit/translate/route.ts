@@ -18,7 +18,40 @@ export async function POST(request: Request) {
       return lower.split('-')[0];
     };
 
-    // 0. Prefer Google Translate (no key required)
+    // 0. Priority: GPT-4o-mini (User Requirement)
+    const openaiKey = process.env.OPENAI_API_KEY;
+    if (openaiKey) {
+      try {
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${openaiKey}`,
+          },
+          body: JSON.stringify({
+            model: 'gpt-4o-mini',
+            messages: [
+              { role: 'system', content: `You are a professional translator. Translate the following text to ${targetLang}. Output ONLY the translated text. No explanations.` },
+              { role: 'user', content: text },
+            ],
+            temperature: 0.3,
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const translation = data.choices?.[0]?.message?.content?.trim();
+          if (translation) return NextResponse.json({ translation });
+        } else {
+          const err = await response.text();
+          console.warn(`[Orbit] GPT-4o-mini translation failed (${response.status}): ${err}. Falling back...`);
+        }
+      } catch (e) {
+        console.error('[Orbit] GPT-4o-mini translate error:', e);
+      }
+    }
+
+    // 1. Fallback to Google Translate (no key required)
     try {
       const googleTarget = normalizeGoogleLang(targetLang);
       const googleUrl = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${encodeURIComponent(googleTarget)}&dt=t&q=${encodeURIComponent(text)}`;
@@ -51,14 +84,14 @@ export async function POST(request: Request) {
         });
 
         if (olResponse.ok) {
-           const data = await olResponse.json();
-           const translation = data.response?.trim();
-           if (translation) return NextResponse.json({ translation });
+          const data = await olResponse.json();
+          const translation = data.response?.trim();
+          if (translation) return NextResponse.json({ translation });
         } else {
-           console.warn(`[Orbit] Remote Ollama failed (${olResponse.status}). Fallback...`);
+          console.warn(`[Orbit] Remote Ollama failed (${olResponse.status}). Fallback...`);
         }
       } catch (e) {
-         console.error("[Orbit] Remote Ollama connection error:", e);
+        console.error("[Orbit] Remote Ollama connection error:", e);
       }
     }
 
@@ -110,8 +143,8 @@ export async function POST(request: Request) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{
-          parts: [{ 
-            text: `Translate the following text to ${targetLang}. Output ONLY the translated text. Do not add commentary or omit content.\n\nText: ${text}` 
+          parts: [{
+            text: `Translate the following text to ${targetLang}. Output ONLY the translated text. Do not add commentary or omit content.\n\nText: ${text}`
           }]
         }],
         generationConfig: { temperature: 0.1 }

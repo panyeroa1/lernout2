@@ -12,19 +12,20 @@ export type AudioSource = "mic" | "system";
 
 export type EmotionType = "neutral" | "joy" | "sadness" | "anger" | "fear" | "calm" | "excited";
 
-export type STTEngine = 'eburon-ink' | 'eburon-nova' | 'eburon-webspeech';
+export type STTEngine = 'eburon-ink' | 'eburon-nova' | 'eburon-webspeech' | 'eburon-openai';
 
 export const STT_ENGINES = [
-  { id: 'eburon-ink', name: 'Eburon Ink (Cartesia)', icon: '✨' },
-  { id: 'eburon-nova', name: 'Eburon Nova (Deepgram)', icon: '🚀' },
-  { id: 'eburon-webspeech', name: 'Eburon Voice (Web Speech)', icon: '🌐' },
+  { id: 'eburon-ink', name: 'Eburon Ink', icon: '✨' },
+  { id: 'eburon-nova', name: 'Eburon Nova', icon: '🚀' },
+  { id: 'eburon-openai', name: 'Eburon Intelligence', icon: '🧠' },
+  { id: 'eburon-webspeech', name: 'Eburon Voice', icon: '🌐' },
 ];
 
 export type TranslationEngine = 'eburon-gemini' | 'eburon-google';
 
 export const TRANSLATION_ENGINES = [
-  { id: 'eburon-gemini', name: 'Eburon Neural (Gemini)', icon: '🧠' },
-  { id: 'eburon-google', name: 'Eburon Standard (Google)', icon: '🌏' },
+  { id: 'eburon-gemini', name: 'Eburon Neural', icon: '🧠' },
+  { id: 'eburon-google', name: 'Eburon Standard', icon: '🌏' },
 ];
 
 export const EMOTION_COLORS: Record<EmotionType, string> = {

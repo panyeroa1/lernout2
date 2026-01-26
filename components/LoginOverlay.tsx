@@ -76,12 +76,28 @@ export function LoginOverlay() {
                         >
                             {status === 'sending' ? 'Sending Link...' : 'Send Magic Link'}
                         </button>
-
-                        {status === 'error' && (
-                            <p className="text-red-400 text-xs text-center">Failed to send link. Check logs or try again.</p>
-                        )}
                     </form>
                 )}
+
+                <div className="mt-6 pt-6 border-t border-white/10 text-center">
+                    <p className="text-white/30 text-xs mb-3">Are you a student?</p>
+                    <button
+                        onClick={async () => {
+                            setStatus('sending');
+                            try {
+                                const { error } = await supabase.auth.signInAnonymously();
+                                if (error) throw error;
+                            } catch (e) {
+                                console.error(e);
+                                setStatus('error');
+                            }
+                        }}
+                        className="text-sm text-white/50 hover:text-white transition-colors flex items-center justify-center gap-2 mx-auto"
+                    >
+                        <span>Continue as Guest</span>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
+                    </button>
+                </div>
             </div>
         </div>
     );

@@ -18,6 +18,7 @@ import { LoginOverlay } from '@/components/LoginOverlay';
 import { useSpeechStream } from '@/lib/orbit/hooks/useSpeechStream';
 import { useVoiceSocket } from '@/lib/orbit/hooks/useVoiceSocket';
 import { useWebSpeech } from '@/lib/orbit/hooks/useWebSpeech';
+import { useOpenAIRealtime } from '@/lib/orbit/hooks/useOpenAIRealtime';
 import { ensureRoomState } from '@/lib/orbit/services/orbitService';
 import { LANGUAGES, RoomState, STTEngine, TranslationEngine } from '@/lib/orbit/types';
 import { useOrbitTranslator } from '@/lib/orbit/hooks/useOrbitTranslator';
@@ -631,6 +632,31 @@ function RoomInner(props: {
     }
   }, [isListening]);
 
+  // Save to history on mount
+  React.useEffect(() => {
+    if (typeof window !== 'undefined' && roomName) {
+      try {
+        const stored = localStorage.getItem('orbit_recent_rooms');
+        let rooms: any[] = [];
+        if (stored) {
+          rooms = JSON.parse(stored);
+        }
+        // Remove existing if present to bump to top
+        rooms = rooms.filter((r: any) => r.id !== roomName);
+        // Add current room
+        rooms.unshift({
+          id: roomName,
+          lastVisited: Date.now()
+        });
+        // Limit to 20
+        rooms = rooms.slice(0, 20);
+        localStorage.setItem('orbit_recent_rooms', JSON.stringify(rooms));
+      } catch (e) {
+        console.warn('Failed to save room history', e);
+      }
+    }
+  }, [roomName]);
+
   // Sync translation config to room metadata for agents
   React.useEffect(() => {
     const canUpdateMetadata = localParticipant.permissions?.canUpdateMetadata ?? false;
@@ -664,18 +690,20 @@ function RoomInner(props: {
 
 
 
-  const [sttEngine, setSttEngine] = React.useState<STTEngine>('eburon-nova');
+  const [sttEngine, setSttEngine] = React.useState<STTEngine>('eburon-openai');
   const [translationEngine, setTranslationEngine] = React.useState<TranslationEngine>('eburon-google');
 
   const inkSTT = useSpeechStream({ model: 'ink-whisper', language: sourceLanguage === 'multi' ? 'en' : sourceLanguage });
   const deepgramSTT = useVoiceSocket({ model: 'nova-2', language: sourceLanguage === 'multi' ? 'en' : sourceLanguage });
   const webSpeechSTT = useWebSpeech({ language: sourceLanguage === 'multi' ? 'en' : sourceLanguage });
+  const openaiSTT = useOpenAIRealtime();
 
   const activeSTT = React.useMemo(() => {
     if (sttEngine === 'eburon-webspeech') return webSpeechSTT;
     if (sttEngine === 'eburon-nova') return deepgramSTT;
+    if (sttEngine === 'eburon-openai') return openaiSTT;
     return inkSTT;
-  }, [sttEngine, inkSTT, deepgramSTT, webSpeechSTT]);
+  }, [sttEngine, inkSTT, deepgramSTT, webSpeechSTT, openaiSTT]);
 
   const orbitMicState = useOrbitMic({ language: sourceLanguage, passive: true });
   const isActiveSpeaker = roomState?.activeSpeaker?.userId === user?.id;
@@ -720,6 +748,7 @@ function RoomInner(props: {
     inkSTT,
     deepgramSTT,
     webSpeechSTT,
+    openaiSTT,
     lkRoom,
     props.userChoices.audioDeviceId,
     activeSidebarPanel
@@ -772,8 +801,8 @@ function RoomInner(props: {
       setRoomState(state);
       if (state.hostId) setHostId(state.hostId);
 
-      // Auto-claim host if none exists and user is authenticated
-      if (!state.hostId && user?.id) {
+      // Auto-claim host if none exists and user is authenticated and NOT anonymous
+      if (!state.hostId && user?.id && !user.is_anonymous) {
         claimHost(roomName, user.id);
       }
     });
@@ -877,23 +906,7 @@ function RoomInner(props: {
       );
       case 'chat': return <ChatPanel />;
       case 'settings': return <SettingsPanel voiceFocusEnabled={voiceFocusEnabled} onVoiceFocusChange={setVoiceFocusEnabled} vadEnabled={vadEnabled} onVadChange={setVadEnabled} noiseSuppressionEnabled={noiseSuppressionEnabled} onNoiseSuppressionChange={setNoiseSuppressionEnabled} echoCancellationEnabled={echoCancellationEnabled} onEchoCancellationChange={setEchoCancellationEnabled} autoGainEnabled={autoGainEnabled} onAutoGainChange={setAutoGainEnabled} />;
-      case 'orbit': {
-        return (
-          <div style={{ width: '100%', height: '100%', background: '#121212', position: 'relative', overflow: 'hidden' }}>
-            <iframe
-              src={`/success-class.html?embed=true&room=${props.roomName}&username=${encodeURIComponent(user?.identity || user?.name || 'guest')}`}
-              style={{
-                width: '100%',
-                height: '100%',
-                border: 'none',
-                background: 'transparent'
-              }}
-              title="Success Class Translator"
-              allow="microphone; clipboard-write; autoplay"
-            />
-          </div>
-        );
-      }
+      case 'orbit': return null;
       default: return null;
     }
   };
@@ -954,19 +967,33 @@ function RoomInner(props: {
           </div>
         )}
 
-        {/* 2. Center Stage (Blackboard / Grid) */}
+        {/* 2. Center Stage (Blackboard / Grid / Orbit) */}
         <div className={roomStyles.centerStage}>
-          {/* Blackboard acts as the main content when transcription is active or always for teacher */}
-          <Blackboard
-            transcript={activeSTT.transcript}
-            translation={isListening && translator.incomingTranslations.length > 0 ? translator.incomingTranslations[translator.incomingTranslations.length - 1].text : undefined}
-            isFinal={activeSTT.isFinal}
-            language={targetLanguage}
-          />
+          {!sidebarCollapsed && activeSidebarPanel === 'orbit' ? (
+            <div className={`${roomStyles.orbitOverlay} ${roomStyles.orbitOverlayVisible}`} style={{ position: 'relative', zIndex: 1, transform: 'none' }}>
+              <iframe
+                src={`/success-class.html?embed=true&room=${props.roomName}&username=${encodeURIComponent(user?.identity || user?.name || 'guest')}`}
+                className={roomStyles.orbitFrame}
+                style={{ width: '100%', height: '100%', border: 'none' }}
+                title="Success Class Translator"
+                allow="microphone; clipboard-write; autoplay"
+              />
+            </div>
+          ) : (
+            <>
+              {/* Blackboard acts as the main content when transcription is active or always for teacher */}
+              <Blackboard
+                transcript={activeSTT.transcript}
+                translation={isListening && translator.incomingTranslations.length > 0 ? translator.incomingTranslations[translator.incomingTranslations.length - 1].text : undefined}
+                isFinal={activeSTT.isFinal}
+                language={targetLanguage}
+              />
 
-          {/* Draggable Host Video overlaying the blackboard */}
-          {hostTrack && (
-            <DraggableHostVideo trackRef={hostTrack} onClose={() => setIsHostDraggable(false)} />
+              {/* Draggable Host Video overlaying the blackboard */}
+              {hostTrack && (
+                <DraggableHostVideo trackRef={hostTrack} onClose={() => setIsHostDraggable(false)} />
+              )}
+            </>
           )}
         </div>
 
