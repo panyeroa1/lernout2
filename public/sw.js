@@ -4,8 +4,7 @@ self.addEventListener('install', (event) => {
     caches.open('orbit-v1').then((cache) => {
       return cache.addAll([
         '/',
-        '/manifest.json',
-        '/styles/globals.css'
+        '/manifest.json'
       ]);
     })
   );

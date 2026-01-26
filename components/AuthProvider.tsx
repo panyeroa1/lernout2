@@ -40,6 +40,26 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   useEffect(() => {
+    // PWA Service Worker registration
+    if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+      const registerSW = () => {
+        navigator.serviceWorker.register('/sw.js').then((reg) => {
+          console.log('SW registered');
+        }).catch((err) => {
+          console.warn('SW failed', err);
+        });
+      };
+
+      if (document.readyState === 'complete') {
+        registerSW();
+      } else {
+        window.addEventListener('load', registerSW);
+        return () => window.removeEventListener('load', registerSW);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
     if (!supabase) {
       setLoading(false);
       return;

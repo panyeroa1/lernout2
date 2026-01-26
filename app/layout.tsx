@@ -65,21 +65,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <ClientOnlyToaster />
           {children}
         </AuthProvider>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              if ('serviceWorker' in navigator) {
-                window.addEventListener('load', function() {
-                  navigator.serviceWorker.register('/sw.js').then(function(registration) {
-                    console.log('SW registered');
-                  }).catch(function(err) {
-                    console.log('SW failed', err);
-                  });
-                });
-              }
-            `,
-          }}
-        />
       </body>
     </html>
   );
