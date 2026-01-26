@@ -148,6 +148,9 @@ export function ParticipantsPanel({
   translationTargetLanguage,
   onTranslationTargetLanguageChange,
 }: {
+  participants?: any[];
+  activeSpeakerId?: string | null;
+  user?: any;
   alias?: string;
   onDirectMessage?: (participantIdentity: string, participantName: string) => void;
   waitingRoomEnabled: boolean;
@@ -161,6 +164,8 @@ export function ParticipantsPanel({
   onTranslationAgentToggle: (enabled: boolean) => void;
   translationTargetLanguage: string;
   onTranslationTargetLanguageChange: (language: string) => void;
+  showVideoList?: boolean;
+  setShowVideoList?: (show: boolean | ((prev: boolean) => boolean)) => void;
 }) {
   const participants = useParticipants();
   const { localParticipant } = useLocalParticipant();

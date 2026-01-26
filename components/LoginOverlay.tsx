@@ -7,7 +7,7 @@ import { dbClient as supabase } from '@/lib/orbit/services/dbClient';
 export function LoginOverlay() {
     const { user, signInWithEmail, signOut } = useAuth();
     const [email, setEmail] = useState('');
-    const [role, setRole] = useState<'host_speaker' | 'receiver_translator'>('receiver_translator');
+    // Role selection removed for simplicity; role determined by room logic or identity
     const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
 
     // If user is logged in, we verify if they have a role update pending or just show nothing?
@@ -26,7 +26,7 @@ export function LoginOverlay() {
             // 2. We can't set the role on the user record *yet* because they aren't signed in until they click the link.
             // However, we can store it in localStorage to apply it after the redirect callback.
             if (typeof window !== 'undefined') {
-                window.localStorage.setItem('orbit_pending_role', role);
+                // window.localStorage.setItem('orbit_pending_role', role); // Role logic simplified
             }
 
             setStatus('sent');
@@ -67,31 +67,7 @@ export function LoginOverlay() {
                             />
                         </div>
 
-                        <div>
-                            <label className="block text-xs font-semibold text-white/40 uppercase mb-2 ml-1">Select Role</label>
-                            <div className="grid grid-cols-2 gap-3">
-                                <button
-                                    type="button"
-                                    onClick={() => setRole('host_speaker')}
-                                    className={`px-4 py-3 rounded-lg border text-sm font-medium transition-all ${role === 'host_speaker'
-                                            ? 'bg-[#D4AF37]/10 border-[#D4AF37] text-[#D4AF37]'
-                                            : 'bg-white/5 border-white/10 text-white/60 hover:bg-white/10'
-                                        }`}
-                                >
-                                    Host Speaker
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setRole('receiver_translator')}
-                                    className={`px-4 py-3 rounded-lg border text-sm font-medium transition-all ${role === 'receiver_translator'
-                                            ? 'bg-[#D4AF37]/10 border-[#D4AF37] text-[#D4AF37]'
-                                            : 'bg-white/5 border-white/10 text-white/60 hover:bg-white/10'
-                                        }`}
-                                >
-                                    Receiver (Translator)
-                                </button>
-                            </div>
-                        </div>
+
 
                         <button
                             type="submit"

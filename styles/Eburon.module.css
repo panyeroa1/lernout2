@@ -483,10 +483,62 @@
 .focusLayoutContainer {
   height: 100%;
   width: 100%;
+}
+
+.roomLayout {
   display: grid;
-  grid-template-columns: 1fr;
-  grid-template-rows: 1fr;
-  padding: var(--lk-grid-gap, 0.5rem);
+  grid-template-columns: 320px 1fr 320px;
+  grid-template-rows: 1fr auto;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  background: var(--sc-bg);
+  color: #fff;
+}
+
+.roomLayoutCollapsed {
+  grid-template-columns: 320px 1fr 0px;
+}
+
+.roomLayoutStudent {
+  grid-template-columns: 0px 1fr 320px;
+}
+
+.leftSidebar {
+  background: var(--sc-card);
+  border-right: 1px solid var(--sc-border);
+  display: flex;
+  flex-direction: column;
+  z-index: 10;
+}
+
+.centerStage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #000;
+}
+
+.blackboardArea {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 2rem;
+  overflow-y: auto;
+  position: relative;
+}
+
+.videoGridContainer {
+  /* This is now just a hidden container for the filtered grid if needed, or overlays */
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
 }
 
 .focusLayoutContainer :global(.lk-participant-tile) {

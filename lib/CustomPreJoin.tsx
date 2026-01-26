@@ -71,7 +71,11 @@ const VideoOffIcon = () => (
 
 
 
+import { LoginOverlay } from '@/components/LoginOverlay';
+import { useAuth } from '@/components/AuthProvider';
+
 export function CustomPreJoin({ roomName, onSubmit, onError, defaults }: CustomPreJoinProps) {
+  const { user } = useAuth();
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
@@ -417,6 +421,10 @@ export function CustomPreJoin({ roomName, onSubmit, onError, defaults }: CustomP
 
   // Determine connection state for UI
   const isConnecting = false;
+
+  if (!user) {
+    return <LoginOverlay />;
+  }
 
   return (
     <div className={styles.preJoinPage}>

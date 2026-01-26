@@ -26,6 +26,7 @@ import { useOrbitTranslator } from '@/lib/orbit/hooks/useOrbitTranslator';
 import { HostCaptionOverlay } from '@/lib/orbit/components/HostCaptionOverlay';
 import { CinemaCaptionOverlay } from '@/lib/CinemaCaptionOverlay';
 import { DraggableHostVideo } from '@/lib/orbit/components/DraggableHostVideo';
+import { Blackboard } from '@/lib/orbit/components/Blackboard';
 
 import roomStyles from '@/styles/Eburon.module.css';
 
@@ -596,6 +597,7 @@ function RoomInner(props: {
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
   const [voiceFocusEnabled, setVoiceFocusEnabled] = React.useState(true);
   const [isGridView, setIsGridView] = React.useState(false);
+  const [leftSidebarCollapsed, setLeftSidebarCollapsed] = React.useState(false);
   const [vadEnabled, setVadEnabled] = React.useState(true);
   const [noiseSuppressionEnabled, setNoiseSuppressionEnabled] = React.useState(true);
   const [echoCancellationEnabled, setEchoCancellationEnabled] = React.useState(true);
@@ -910,60 +912,73 @@ function RoomInner(props: {
     }
   }, [isTranscriptionEnabled, roomName, user?.id, roomState, lkRoom]);
 
+  // Determine if user is host (Teacher) to show the full 3-column layout
+  const isTeacher = hostId === user?.id;
+
   return (
-    <div className={`lk-room-container ${roomStyles.roomLayout} ${sidebarCollapsed ? roomStyles.roomLayoutCollapsed : ''}`}>
+    <div className={`lk-room-container ${roomStyles.roomLayout} ${sidebarCollapsed ? roomStyles.roomLayoutCollapsed : ''} ${!isTeacher ? roomStyles.roomLayoutStudent : ''}`}>
       <LayoutContextProvider value={layoutContext}>
 
-        <RoomAudioRenderer volume={1} />
-        <ConnectionStateToast />
+        {/* 1. Left Sidebar (Teacher Only) */}
+        {isTeacher && (
+          <div className={roomStyles.leftSidebar} style={{ width: leftSidebarCollapsed ? '0px' : '320px', transition: 'width 0.3s' }}>
+            <div className={roomStyles.sidebarHeader}>
+              <div className={roomStyles.sidebarHeaderText}>
+                <h3>TEACHER CONTROLS</h3>
+              </div>
+              <button onClick={() => setLeftSidebarCollapsed(!leftSidebarCollapsed)}>
+                {leftSidebarCollapsed ? <ChevronRightIcon /> : <ChevronLeftIcon />}
+              </button>
+            </div>
 
+            {/* Re-use participant panel content here if needed, or create specific teacher controls */}
+            <div className={roomStyles.sidebarContent} style={{ overflowY: 'auto', padding: '10px' }}>
+              <ParticipantsPanel
+                participants={remoteParticipants}
+                activeSpeakerId={roomState?.activeSpeaker?.userId}
+                user={user}
+                waitingRoomEnabled={waitingRoomEnabled}
+                waitingList={waitingList}
+                onWaitingRoomToggle={setWaitingRoomEnabled}
+                admittedIds={admittedIds}
+                onAdmitParticipant={(id: string) => { setAdmittedIds(prev => new Set(prev).add(id)); setWaitingList(prev => prev.filter(w => w.identity !== id)); }}
+                onRejectParticipant={(id: string) => setWaitingList(prev => prev.filter(w => w.identity !== id))}
+                showVideoList={true}
+                setShowVideoList={() => { }}
+                isTranslationAgentEnabled={false}
+                onTranslationAgentToggle={() => { }}
+                translationTargetLanguage="en"
+                onTranslationTargetLanguageChange={() => { }}
+              />
+            </div>
+          </div>
+        )}
 
+        {/* 2. Center Stage (Blackboard / Grid) */}
+        <div className={roomStyles.centerStage}>
+          {/* Blackboard acts as the main content when transcription is active or always for teacher */}
+          <Blackboard
+            transcript={activeSTT.transcript}
+            translation={isListening && translator.incomingTranslations.length > 0 ? translator.incomingTranslations[translator.incomingTranslations.length - 1].text : undefined}
+            isFinal={activeSTT.isFinal}
+            language={targetLanguage}
+          />
 
-        <div className={roomStyles.videoGridContainer}>
-          <VideoGrid allowedParticipantIds={admittedIds} isGridView={isGridView} hostIdentity={hostId} isHostDraggable={isHostDraggable} />
-          {isHostDraggable && hostTrack && (
+          {/* Draggable Host Video overlaying the blackboard */}
+          {hostTrack && (
             <DraggableHostVideo trackRef={hostTrack} onClose={() => setIsHostDraggable(false)} />
           )}
-          {!isHostDraggable && hostId && (
-            <button
-              onClick={() => setIsHostDraggable(true)}
-              style={{
-                position: 'fixed',
-                top: '20px',
-                left: '20px',
-                zIndex: 1001,
-                background: 'rgba(0,0,0,0.6)',
-                border: '1px solid rgba(255,255,255,0.2)',
-                color: '#fff',
-                padding: '8px 12px',
-                borderRadius: '8px',
-                fontSize: '11px',
-                fontWeight: '600',
-                cursor: 'pointer',
-                backdropFilter: 'blur(8px)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px'
-              }}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" /></svg>
-              SHOW {hostId === user?.id ? 'MY' : 'HOST'} VIDEO
-            </button>
-          )}
         </div>
+
+        {/* 3. Right Sidebar (Chat / Settings) - Existing Logic */}
         <div className={`${roomStyles.chatPanel} ${sidebarCollapsed ? roomStyles.chatPanelCollapsed : ''}`}>
           <button className={roomStyles.sidebarToggle} onClick={() => setSidebarCollapsed(!sidebarCollapsed)} title={sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}>{sidebarCollapsed ? <ChevronLeftIcon /> : <ChevronRightIcon />}</button>
           <div className={roomStyles.sidebarContent} style={{ overflowY: 'auto', overflowX: 'hidden' }}>{renderSidebarPanel()}</div>
         </div>
-        <HostCaptionOverlay
-          words={activeSTT.words}
-          isFinal={activeSTT.isFinal}
-          isListening={activeSTT.isListening}
-          analyser={activeSTT.analyser}
-          // Show translation in green if available and user is listening to translation
-          translationText={isListening && translator.incomingTranslations.length > 0 ? translator.incomingTranslations[translator.incomingTranslations.length - 1].text : undefined}
-          isTranslationFinal={true}
-        />
+
+        <RoomAudioRenderer volume={1} />
+        <ConnectionStateToast />
+
         <EburonControlBar onParticipantsToggle={() => handleSidebarPanelToggle('participants')} onChatToggle={() => handleSidebarPanelToggle('chat')} onSettingsToggle={() => handleSidebarPanelToggle('settings')} onOrbitToggle={() => handleSidebarPanelToggle('orbit')} onGridToggle={() => setIsGridView(!isGridView)} isGridView={isGridView} onTranscriptionToggle={handleTranscriptionToggle} isParticipantsOpen={!sidebarCollapsed && activeSidebarPanel === 'participants'} isChatOpen={!sidebarCollapsed && activeSidebarPanel === 'chat'} isSettingsOpen={!sidebarCollapsed && activeSidebarPanel === 'settings'} isOrbitOpen={!sidebarCollapsed && activeSidebarPanel === 'orbit'} isTranscriptionOpen={isTranscriptionEnabled} isAppMuted={isAppMuted} onAppMuteToggle={setIsAppMuted} roomState={roomState} userId={user?.id} audioCaptureOptions={audioCaptureOptions} onCaptionToggle={() => setIsTranscriptionEnabled(!isTranscriptionEnabled)} isCaptionOpen={isTranscriptionEnabled} onLanguageChange={setTargetLanguage} orbitMicState={orbitMicState} />
         <RecordingIndicator />
       </LayoutContextProvider>
